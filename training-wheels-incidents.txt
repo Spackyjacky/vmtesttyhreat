@@ -1,0 +1,10 @@
+Incident titles for training model
+Rare and potentially high-risk Office operations
+Mass Cloud resource deletions Time Series Anomaly
+ Anomalous Remote Access Tool Usage
+Time series anomaly for data size transferred to public internet
+Email messages removed after delivery​
+TI Map Domain Entity to DeviceNetworkEvents
+Rare subscription-level operations in Azure
+Mass Cloud resource deletions Time Series Anomaly
+Suspicious 'DnsTunnel' behavior was blocked
