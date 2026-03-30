@@ -24,14 +24,16 @@ from datetime import datetime
 # PATHS
 # ─────────────────────────────────────────────────────────────────────────────
 
-SCRIPT_DIR   = Path(__file__).resolve().parent
-ZIP_SOURCE   = SCRIPT_DIR / "Threatpad-v2-main.zip"
-DEMO_DIR     = SCRIPT_DIR / "threatpad_demo_run"
-INNER_DIR    = DEMO_DIR / "Threatpad-v2-main"   # what the zip extracts to
-THREATPAD_PY = INNER_DIR / "threatpad.py"
-SESSION_FILE = INNER_DIR / "session.json"
-SETTINGS_FILE= INNER_DIR / "app_settings.json"
-SNIPPETS_FILE= INNER_DIR / "copy_pasta_snippets.json"
+SCRIPT_DIR    = Path(__file__).resolve().parent
+ZIP_SOURCE    = SCRIPT_DIR / "Threatpad-v2-main.zip"
+DEMO_DIR      = SCRIPT_DIR / "threatpad_demo_run"
+INNER_DIR     = DEMO_DIR / "Threatpad-v2-main"   # what the zip extracts to
+THREATPAD_PY  = INNER_DIR / "threatpad.py"
+SESSION_FILE  = INNER_DIR / "session.json"
+SETTINGS_FILE = INNER_DIR / "app_settings.json"
+SNIPPETS_FILE = INNER_DIR / "copy_pasta_snippets.json"
+ASCII_MENU_SRC = SCRIPT_DIR / "ascii_menu.py"
+ASCII_MENU_DST = INNER_DIR / "ascii_menu.py"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -121,7 +123,26 @@ tabs so you can demo every major ThreatPad feature without any setup.
 
 ─── FEATURE CHECKLIST ────────────────────────────────────────────────────────
 
- 1.  MULTI-TAB INCIDENT MANAGEMENT
+ 1.  ASCII QUICK MENU  (Ctrl+`)
+     • Press Ctrl+` (backtick) to pop up the Quick Action Menu — or use
+       File → Quick Action Menu.
+     • Level 1 — Action:    N=New Incident  O=Open Incident  P=Phone  M=Meeting
+     • Level 2 — Template:  press the NUMBER shown (1–5) or click the label
+     • Level 3 — Client:    press the NUMBER shown (1–3) or click
+     • A new tab is created instantly with the right header pre-filled.
+     • ESC goes back one level at any time.
+
+     CTRL+1  (rapid close & send)
+     • Defangs the current tab, checks no raw IOCs remain,
+       silently copies the defanged note to clipboard,
+       saves it to the Last-15 history,
+       saves the file, then reopens the Quick Menu ready for the next call.
+
+     CTRL+2  (escalation)
+     • Wraps the current note inside an Escalation Note template
+       as a new tab.  Then use Ctrl+1 on that tab to copy & send.
+
+ 2.  MULTI-TAB INCIDENT MANAGEMENT
      • Show the four tabs at the top (this guide + three incidents).
      • Ctrl+N opens a new blank tab.  Middle-click a tab to close it.
      • Each tab auto-saves to the session on close.
@@ -173,12 +194,13 @@ tabs so you can demo every major ThreatPad feature without any setup.
 
 ─── KEYBOARD SHORTCUTS CHEAT SHEET ──────────────────────────────────────────
 
-  Ctrl+I          Extract IOCs            Ctrl+D   Defang
-  Ctrl+E          Export IOCs             Ctrl+R   Refang
-  Ctrl+Shift+E    Enrich IOCs             Ctrl+F   Find
-  Ctrl+N          New tab                 Ctrl+H   Replace
-  Ctrl+O          Open file               Ctrl+S   Save
-  Ctrl+Z / Ctrl+Y Undo / Redo
+  Ctrl+`          Quick Action Menu       Ctrl+1   Defang+Copy+Save+Menu
+  Ctrl+2          Escalation Note         Ctrl+D   Defang
+  Ctrl+I          Extract IOCs            Ctrl+R   Refang
+  Ctrl+E          Export IOCs             Ctrl+F   Find
+  Ctrl+Shift+E    Enrich IOCs             Ctrl+H   Replace
+  Ctrl+N          New tab                 Ctrl+S   Save
+  Ctrl+O          Open file               Ctrl+Z/Y Undo / Redo
 
 ─── NOTES FOR THE PRESENTER ─────────────────────────────────────────────────
 
@@ -562,6 +584,84 @@ def check_dependencies():
     return not missing  # True = safe to launch
 
 
+def install_ascii_menu():
+    """Copy ascii_menu.py into the extracted ThreatPad directory and patch threatpad.py."""
+
+    # ── 1. Copy the module ────────────────────────────────────────────────────
+    if not ASCII_MENU_SRC.exists():
+        print("  ⚠  ascii_menu.py not found — ASCII Quick Menu will be skipped.")
+        return
+    step("Copying ascii_menu.py into ThreatPad directory")
+    shutil.copy2(ASCII_MENU_SRC, ASCII_MENU_DST)
+    ok("ascii_menu.py copied")
+
+    # ── 2. Patch threatpad.py ─────────────────────────────────────────────────
+    step("Patching threatpad.py to enable ASCII Quick Menu")
+    src = THREATPAD_PY.read_text(encoding="utf-8")
+
+    # Guard: skip if already patched
+    if "ascii_menu" in src:
+        ok("threatpad.py already patched — skipping")
+        return
+
+    # Patch A: add import after the ioc_enrichment import block
+    import_patch = (
+        "try:\n"
+        "    from ioc_enrichment import IOCEnrichment\n"
+        "    IOC_ENRICHMENT_AVAILABLE = True\n"
+        "except ImportError:\n"
+        "    IOC_ENRICHMENT_AVAILABLE = False\n"
+        "    IOCEnrichment = None"
+    )
+    import_addition = (
+        "\ntry:\n"
+        "    from ascii_menu import ASCIIMenuIntegration\n"
+        "    ASCII_MENU_AVAILABLE = True\n"
+        "except ImportError:\n"
+        "    ASCII_MENU_AVAILABLE = False\n"
+        "    ASCIIMenuIntegration = None"
+    )
+    if import_patch in src:
+        src = src.replace(import_patch, import_patch + import_addition)
+
+    # Patch B: initialise integration after load_templates_data()
+    init_anchor = "        self.load_templates_data()"
+    init_addition = (
+        "\n\n        # ASCII Quick Menu integration\n"
+        "        self.ascii_menu_integration = None\n"
+        "        if ASCII_MENU_AVAILABLE:\n"
+        "            self.ascii_menu_integration = ASCIIMenuIntegration(self)"
+    )
+    if init_anchor in src and "ascii_menu_integration" not in src:
+        src = src.replace(init_anchor, init_anchor + init_addition)
+
+    # Patch C: bind keys (after existing keybinding block)
+    kb_anchor = "        self.root.bind('<Control-minus>', lambda e: self.decrease_font_size())"
+    kb_addition = (
+        "\n        # ASCII Quick Menu keybindings\n"
+        "        if self.ascii_menu_integration:\n"
+        "            self.ascii_menu_integration.bind_keys()"
+    )
+    if kb_anchor in src and "ascii_menu_integration.bind_keys" not in src:
+        src = src.replace(kb_anchor, kb_anchor + kb_addition)
+
+    # Patch D: add menu entry in File menu (before "Close Tab")
+    menu_anchor = '        file_menu.add_command(label="Close Tab"'
+    menu_addition = (
+        '        file_menu.add_command(\n'
+        '            label="Quick Action Menu  Ctrl+`",\n'
+        '            command=lambda: self.ascii_menu_integration.show_menu()\n'
+        '                    if self.ascii_menu_integration else None)\n'
+        '        file_menu.add_separator()\n'
+        '        '
+    )
+    if menu_anchor in src and "Quick Action Menu" not in src:
+        src = src.replace(menu_anchor, menu_addition + 'file_menu.add_command(label="Close Tab"')
+
+    THREATPAD_PY.write_text(src, encoding="utf-8")
+    ok("threatpad.py patched (ASCII Quick Menu enabled)")
+
+
 def launch_threatpad():
     """Launch ThreatPad from the demo directory."""
     python = sys.executable
@@ -594,6 +694,7 @@ def main():
     write_settings()
     write_session()
     write_snippets()
+    install_ascii_menu()
     deps_ok = check_dependencies()
 
     print()
