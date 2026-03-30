@@ -696,9 +696,10 @@ def install_ascii_menu():
     apply_anchor = "        self.save_settings()\n        self.save_snippets()"
     apply_addition = (
         "        if hasattr(self, 'clients_listbox'):\n"
-        "            self.config.CLIENTS = list(self.clients_listbox.get(0, tk.END))\n"
+        "            _new_clients = list(self.clients_listbox.get(0, tk.END))\n"
+        "            self.config.CLIENTS = _new_clients\n"
         "            if self.ascii_menu_integration:\n"
-        "                self.ascii_menu_integration.config.reload()\n"
+        "                self.ascii_menu_integration.config.data['clients'] = list(_new_clients)\n"
         "        "
     )
     if apply_anchor in src and "clients_listbox" not in src:

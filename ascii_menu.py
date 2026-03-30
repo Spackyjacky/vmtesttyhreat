@@ -254,11 +254,6 @@ class MenuConfig:
         except Exception:
             pass
 
-    def reload(self):
-        """Re-read clients from disk (call after Settings window closes)."""
-        self.data["clients"] = list(DEFAULT_CONFIG["clients"])
-        self._load()
-
     def clients(self):
         return self.data.get("clients", DEFAULT_CONFIG["clients"])
 
