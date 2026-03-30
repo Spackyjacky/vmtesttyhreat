@@ -235,6 +235,17 @@ class MenuConfig:
         self._load()
 
     def _load(self):
+        # Primary source: ThreatPad's app_settings.json (single source of truth)
+        try:
+            if os.path.exists("app_settings.json"):
+                with open("app_settings.json", "r") as f:
+                    settings = json.load(f)
+                    if "clients" in settings and settings["clients"]:
+                        self.data["clients"] = settings["clients"]
+                        return   # clients loaded — no need to check fallback
+        except Exception:
+            pass
+        # Fallback: ascii_menu_config.json (used if app_settings.json has no clients yet)
         try:
             if os.path.exists(MENU_CONFIG_FILE):
                 with open(MENU_CONFIG_FILE, "r") as f:
@@ -242,6 +253,11 @@ class MenuConfig:
                     self.data.update(loaded)
         except Exception:
             pass
+
+    def reload(self):
+        """Re-read clients from disk (call after Settings window closes)."""
+        self.data["clients"] = list(DEFAULT_CONFIG["clients"])
+        self._load()
 
     def clients(self):
         return self.data.get("clients", DEFAULT_CONFIG["clients"])

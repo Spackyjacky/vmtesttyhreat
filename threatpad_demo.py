@@ -658,8 +658,118 @@ def install_ascii_menu():
     if menu_anchor in src and "Quick Action Menu" not in src:
         src = src.replace(menu_anchor, menu_addition + 'file_menu.add_command(label="Close Tab"')
 
+    # Patch E: add CLIENTS to Config class (after API_KEYS block)
+    clients_anchor = "    API_KEYS = {\n        'virustotal': '',\n        'abuseipdb': ''\n    }"
+    clients_addition = (
+        "\n    CLIENTS = [\"Client Alpha\", \"Client Beta\", \"Client Gamma\"]"
+    )
+    if clients_anchor in src and "CLIENTS = [" not in src:
+        src = src.replace(clients_anchor, clients_anchor + clients_addition)
+
+    # Patch F: load clients in load_settings
+    load_anchor = "                    self.config.API_KEYS = settings.get('api_keys', {'virustotal': '', 'abuseipdb': ''})"
+    load_addition = (
+        "\n                    self.config.CLIENTS = settings.get('clients', self.config.CLIENTS)"
+    )
+    if load_anchor in src and "settings.get('clients'" not in src:
+        src = src.replace(load_anchor, load_anchor + load_addition)
+
+    # Patch G: save clients in save_settings
+    save_anchor = "                'api_keys': self.config.API_KEYS"
+    save_addition = ",\n                'clients': self.config.CLIENTS"
+    if save_anchor in src and "'clients': self.config.CLIENTS" not in src:
+        src = src.replace(save_anchor, save_anchor + save_addition)
+
+    # Patch H: add Clients tab in show_settings_window (before General tab)
+    clients_tab_anchor = "        # General tab\n        general_frame = ttk.Frame(notebook)"
+    clients_tab_addition = (
+        "        # Clients tab\n"
+        "        clients_frame = ttk.Frame(notebook)\n"
+        "        notebook.add(clients_frame, text=\"Clients\")\n"
+        "        self.create_clients_tab(clients_frame)\n\n        "
+    )
+    if clients_tab_anchor in src and "create_clients_tab" not in src:
+        src = src.replace(clients_tab_anchor,
+                          clients_tab_addition + "# General tab\n        general_frame = ttk.Frame(notebook)")
+
+    # Patch I: save clients in apply_settings_changes (before self.save_settings())
+    apply_anchor = "        self.save_settings()\n        self.save_snippets()"
+    apply_addition = (
+        "        if hasattr(self, 'clients_listbox'):\n"
+        "            self.config.CLIENTS = list(self.clients_listbox.get(0, tk.END))\n"
+        "            if self.ascii_menu_integration:\n"
+        "                self.ascii_menu_integration.config.reload()\n"
+        "        "
+    )
+    if apply_anchor in src and "clients_listbox" not in src:
+        src = src.replace(apply_anchor, apply_addition + apply_anchor)
+
+    # Patch J: add create_clients_tab method (before apply_settings_changes)
+    method_anchor = "    def apply_settings_changes(self):"
+    clients_method = '''\
+    def create_clients_tab(self, parent):
+        """Manage the client list used by the ASCII Quick Menu."""
+        ttk.Label(parent, text="Clients shown in the Quick Action Menu (Ctrl+`):").pack(
+            anchor="w", padx=10, pady=(10, 2))
+
+        list_frame = ttk.Frame(parent)
+        list_frame.pack(fill="both", expand=True, padx=10, pady=5)
+
+        self.clients_listbox = tk.Listbox(list_frame, selectmode=tk.SINGLE)
+        self.clients_listbox.pack(side="left", fill="both", expand=True)
+        for c in self.config.CLIENTS:
+            self.clients_listbox.insert(tk.END, c)
+
+        btn_frame = ttk.Frame(list_frame)
+        btn_frame.pack(side="right", fill="y", padx=(8, 0))
+
+        self._client_name_var = tk.StringVar()
+        ttk.Label(btn_frame, text="Name:").pack(anchor="w", pady=(0, 2))
+        name_entry = ttk.Entry(btn_frame, textvariable=self._client_name_var, width=22)
+        name_entry.pack(anchor="w", pady=(0, 8))
+
+        def _add_client():
+            name = self._client_name_var.get().strip()
+            if name:
+                self.clients_listbox.insert(tk.END, name)
+                self._client_name_var.set("")
+                name_entry.focus_set()
+
+        def _update_client():
+            sel = self.clients_listbox.curselection()
+            name = self._client_name_var.get().strip()
+            if sel and name:
+                self.clients_listbox.delete(sel[0])
+                self.clients_listbox.insert(sel[0], name)
+                self.clients_listbox.selection_set(sel[0])
+
+        def _delete_client():
+            sel = self.clients_listbox.curselection()
+            if sel:
+                self.clients_listbox.delete(sel[0])
+                self._client_name_var.set("")
+
+        def _on_select(_event=None):
+            sel = self.clients_listbox.curselection()
+            if sel:
+                self._client_name_var.set(self.clients_listbox.get(sel[0]))
+
+        self.clients_listbox.bind("<<ListboxSelect>>", _on_select)
+
+        ttk.Button(btn_frame, text="Add",    command=_add_client,    width=10).pack(pady=2)
+        ttk.Button(btn_frame, text="Update", command=_update_client, width=10).pack(pady=2)
+        ttk.Button(btn_frame, text="Delete", command=_delete_client, width=10).pack(pady=2)
+
+        ttk.Label(parent,
+                  text="Changes take effect when you click Apply or OK.",
+                  foreground="gray").pack(anchor="w", padx=10, pady=(4, 0))
+
+'''
+    if method_anchor in src and "def create_clients_tab" not in src:
+        src = src.replace(method_anchor, clients_method + method_anchor)
+
     THREATPAD_PY.write_text(src, encoding="utf-8")
-    ok("threatpad.py patched (ASCII Quick Menu enabled)")
+    ok("threatpad.py patched (ASCII Quick Menu + Clients tab enabled)")
 
 
 def launch_threatpad():
