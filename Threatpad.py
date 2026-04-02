@@ -819,6 +819,11 @@ def defang_text(self):
     text = re.sub(r'@(?=\[#\])', '[@]', text)   # @ immediately before [#]
     text = re.sub(r'(?<=\[#\])@', '[@]', text)  # @ immediately after [#]
 
+    # Pass 2: catch-all — any @ not yet wrapped as [@]
+    # Covers no-TLD emails (user@domain), bare @ mid-sentence, and any
+    # address format where Pass 1 regex did not match (e.g. # in local-part).
+    text = re.sub(r'(?<!\[)@(?!\])', '[@]', text)
+
     text_widget.delete("1.0", "end")
     text_widget.insert("1.0", text)
     

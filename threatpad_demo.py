@@ -769,6 +769,24 @@ def install_ascii_menu():
     if method_anchor in src and "def create_clients_tab" not in src:
         src = src.replace(method_anchor, clients_method + method_anchor)
 
+    # Patch K: two-pass email defanging — add catch-all after existing email block
+    # The existing pattern requires a TLD (.com etc.) so misses no-TLD addresses.
+    # Pass 2 uses a negative lookbehind/lookahead to avoid double-defanging [@].
+    email_block_anchor = (
+        "        email_pattern = r'\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Z|a-z]{2,}\\b'\n"
+        "        def defang_email(match):\n"
+        "            return match.group().replace('@', '[@]')\n"
+        "        text = re.sub(email_pattern, defang_email, text)"
+    )
+    email_pass2 = (
+        "\n        # Pass 2: catch-all for any @ not yet defanged\n"
+        "        # Covers no-TLD emails, bare @ mid-sentence, and addresses\n"
+        "        # where Pass 1 did not match (e.g. # in local-part).\n"
+        "        text = re.sub(r'(?<!\\[)@(?!\\])', '[@]', text)"
+    )
+    if email_block_anchor in src and "Pass 2: catch-all for any @" not in src:
+        src = src.replace(email_block_anchor, email_block_anchor + email_pass2)
+
     THREATPAD_PY.write_text(src, encoding="utf-8")
     ok("threatpad.py patched (ASCII Quick Menu + Clients tab enabled)")
 
