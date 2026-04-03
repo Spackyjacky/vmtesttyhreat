@@ -457,7 +457,7 @@ class ASCIIMenuWindow:
         else:
             self.title_var.set(f"  {action_label.upper()}  ›  Select Template  ")
             self.footer_var.set("press number or click  •  [ESC] back")
-            templates = self.config.templates(self.action)
+            templates = self._get_live_templates()
             tk.Frame(self.items_frame, bg=BG, height=6).grid(row=0, column=0)
             for i, name in enumerate(templates):
                 self._make_item(self.items_frame, str(i + 1), name,
@@ -508,7 +508,7 @@ class ASCIIMenuWindow:
 
         else:
             # Client selector for new note
-            templates  = self.config.templates(self.action)
+            templates  = self._get_live_templates()
             tmpl_name  = templates[self.template]
             self.title_var.set(f"  {action_label.upper()}  ›  Select Client  ")
             self.footer_var.set("press number or click  •  [ESC] back")
@@ -522,11 +522,20 @@ class ASCIIMenuWindow:
                 row=len(clients) + 1, column=0)
 
     def _create_note(self, client_idx: int):
-        templates   = self.config.templates(self.action)
+        templates   = self._get_live_templates()
         tmpl_name   = templates[self.template]
         client_name = self.config.clients()[client_idx]
         tab_title   = f"{client_name} – {tmpl_name}"
-        content     = _make_template(self.action, tmpl_name, client_name)
+        # Use snippet content if available, else fall back to built-in template
+        content = None
+        try:
+            snippets = self.integration.app.snippets
+            if snippets and tmpl_name in snippets:
+                content = snippets[tmpl_name].replace("{date}", _ts())
+        except Exception:
+            pass
+        if content is None:
+            content = _make_template(self.action, tmpl_name, client_name)
         self.integration.app.new_tab(tab_title, content)
         # Store the client on the integration for Ctrl+1
         self.integration.current_client = client_name
@@ -556,7 +565,7 @@ class ASCIIMenuWindow:
                     if 0 <= idx < len(self.config.clients()):
                         self._pick_open_client(idx)
             else:
-                templates = self.config.templates(self.action)
+                templates = self._get_live_templates()
                 if key.isdigit():
                     idx = int(key) - 1
                     if 0 <= idx < len(templates):
@@ -603,6 +612,18 @@ class ASCIIMenuWindow:
             pass
         self.integration.menu_window = None
 
+    # ── helpers ──────────────────────────────────────────────────────────────
+
+    def _get_live_templates(self):
+        """Return template names: app snippets (live) → config fallback."""
+        try:
+            snippets = self.integration.app.snippets
+            if snippets:
+                return list(snippets.keys())
+        except Exception:
+            pass
+        return self.config.templates(self.action)
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # INTEGRATION  –  hooks into SOCNotesApp
@@ -625,12 +646,19 @@ class ASCIIMenuIntegration:
 
     def bind_keys(self):
         root = self.app.root
-        # Ctrl+` (grave accent) → toggle menu
+        # Ctrl+` (grave accent) — multiple sequences for cross-keyboard compatibility
         root.bind("<Control-grave>", lambda e: self.show_menu())
+        root.bind("<Control-quoteleft>", lambda e: self.show_menu())
+        try:
+            root.bind("<Control-Key-96>", lambda e: self.show_menu())
+        except Exception:
+            pass
         # Ctrl+1 → defang + safe-copy + save + reopen menu
         root.bind("<Control-Key-1>", lambda e: self.ctrl_1())
         # Ctrl+2 → escalation note
         root.bind("<Control-Key-2>", lambda e: self.ctrl_2())
+        # Ctrl+3 → close current tab
+        root.bind("<Control-Key-3>", lambda e: self.ctrl_3())
 
     def show_menu(self):
         if self.menu_window is not None:
@@ -727,6 +755,22 @@ class ASCIIMenuIntegration:
             )
         except Exception:
             pass
+
+    # ── Ctrl+3 ───────────────────────────────────────────────────────────────
+
+    def ctrl_3(self):
+        """Close the current tab."""
+        app = self.app
+        current = app.notebook.select()
+        if not current:
+            return
+        try:
+            app.close_tab(current)
+        except Exception:
+            try:
+                app.notebook.forget(current)
+            except Exception:
+                pass
 
     # ── helpers ──────────────────────────────────────────────────────────────
 
