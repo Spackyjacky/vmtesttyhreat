@@ -26,7 +26,7 @@ except ImportError:
 try:
     from ascii_menu import ASCIIMenuIntegration
     ASCII_MENU_AVAILABLE = True
-except ImportError:
+except Exception:
     ASCII_MENU_AVAILABLE = False
     ASCIIMenuIntegration = None
 
@@ -4832,11 +4832,6 @@ class SOCNotesApp:
     # --------------------- Template Management ---------------------
     def create_templates_tab(self, parent):
         self.load_templates_data()
-
-        # ASCII Quick Menu integration
-        self.ascii_menu_integration = None
-        if ASCII_MENU_AVAILABLE:
-            self.ascii_menu_integration = ASCIIMenuIntegration(self)
         ttk.Label(parent, text="Configure templates for quick insertion:").pack(anchor="w", padx=10, pady=5)
         
         list_frame = ttk.Frame(parent)

@@ -7,7 +7,7 @@ python -m pip install --upgrade pyinstaller tkinterdnd2
 
 :: Build the Windows executable
 echo Building executable...
-pyinstaller --onefile --windowed --name=ThreatPad --clean --icon=threatpad.ico threatpad.py
+pyinstaller --onefile --windowed --name=ThreatPad --clean --icon=threatpad.ico --hidden-import=ascii_menu threatpad.py
 
 :: Check if build was successful
 if exist "dist\ThreatPad.exe" (

@@ -38,6 +38,7 @@ def build_executable():
         "--icon=threatpad.ico",        # Icon (if exists)
         "--add-data=templates:templates",  # Include templates folder
         "--hidden-import=tkinterdnd2", # Ensure drag-drop is included
+        "--hidden-import=ascii_menu",  # Ensure ASCII Quick Menu is included
         "--clean",                     # Clean build
         "threatpad.py"
     ]
