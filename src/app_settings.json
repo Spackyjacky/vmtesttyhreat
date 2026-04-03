@@ -1,0 +1,18 @@
+{
+  "dark_mode": true,
+  "follow_system_theme": false,
+  "line_numbers": true,
+  "word_wrap": true,
+  "font_size": 13,
+  "font_family": "Consolas",
+  "syntax_highlighting": true,
+  "api_keys": {
+    "virustotal": "",
+    "abuseipdb": ""
+  },
+  "clients": [
+    "Client Alpha",
+    "Client Beta",
+    "Client Gamma"
+  ]
+}
