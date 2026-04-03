@@ -351,7 +351,11 @@ class SOCNotesApp:
                     self.config.TRAINING_WHEELS = settings.get('training_wheels', False)
                     self.config.COPY_CLEAR = settings.get('copy_clear', False)
                     self.config.COPY_COUNT_WARN = settings.get('copy_count_warn', True)
-                    self.clients = settings.get('clients', {})
+                    raw_clients = settings.get('clients', {})
+                    # Migrate: older saves stored clients as a plain list of names
+                    if isinstance(raw_clients, list):
+                        raw_clients = {name: {} for name in raw_clients}
+                    self.clients = raw_clients
                     self.active_client = settings.get('active_client', '')
                     self.config.THEME_NAME = settings.get('theme_name', 'Default Dark')
                     saved_mileage = settings.get('mileage', {})
@@ -381,7 +385,6 @@ class SOCNotesApp:
                 'font_family': self.config.FONT_FAMILY,
                 'syntax_highlighting': self.config.SYNTAX_HIGHLIGHTING,
                 'api_keys': self.config.API_KEYS,
-                'clients': self.config.CLIENTS,
                 'training_wheels': self.config.TRAINING_WHEELS,
                 'copy_clear': self.config.COPY_CLEAR,
                 'copy_count_warn': self.config.COPY_COUNT_WARN,
@@ -3702,12 +3705,6 @@ class SOCNotesApp:
             self.remove_dark_mode()
         
         self.update_all_fonts()
-        if hasattr(self, 'clients_listbox'):
-            _new_clients = list(self.clients_listbox.get(0, tk.END))
-            self.config.CLIENTS = _new_clients
-            if self.ascii_menu_integration:
-                self.ascii_menu_integration.config.data['clients'] = list(_new_clients)
-                self.save_settings()
         self.save_snippets()
         self.save_templates_data()
         self.update_copypasta_menu()

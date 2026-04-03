@@ -628,14 +628,14 @@ class ASCIIMenuWindow:
         return self.config.templates(self.action)
 
     def _get_live_clients(self):
-        """Return client list from app.config.CLIENTS (Settings → Clients tab)."""
+        """Return client names from app.clients dict (Settings → Clients tab)."""
         try:
-            clients = self.integration.app.config.CLIENTS
-            if clients:
-                return list(clients)
+            clients_dict = self.integration.app.clients
+            if clients_dict:
+                return sorted(clients_dict.keys())
         except Exception:
             pass
-        return self._get_live_clients()
+        return self.config.clients()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
