@@ -1,0 +1,8 @@
+{
+  "Incident Header": "=== INCIDENT ANALYSIS ===\nDate       : {date}\nAnalyst    : \nIncident ID: INC-\nSeverity   : [LOW/MEDIUM/HIGH/CRITICAL]\nStatus     : OPEN\n\n",
+  "IOC Section": "\n--- INDICATORS OF COMPROMISE ---\nIPs:\n- \n\nDomains:\n- \n\nURLs:\n- \n\nHashes:\n- \n\nEmails:\n- \n\n",
+  "Timeline": "\n--- TIMELINE ---\n[{date} HH:MM]  \n\n",
+  "Remediation": "\n--- REMEDIATION ---\n[ ] 1. \n[ ] 2. \n[ ] 3. \n\n",
+  "Executive Summary": "\n--- EXECUTIVE SUMMARY ---\nThreat Level : \nImpact       : \nRecommended  : \n\n",
+  "Escalation Note": "\n--- ESCALATION NOTE ---\nEscalated To : \nReason       : \nTime         : \n\n"
+}

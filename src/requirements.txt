@@ -1,0 +1,6 @@
+# Core dependencies
+tkinterdnd2
+requests
+
+# Optional dependencies (for enhanced features)
+# pyspellchecker  # Uncomment for spell checking features
