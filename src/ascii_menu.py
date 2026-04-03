@@ -424,13 +424,15 @@ class ASCIIMenuWindow:
 
     def _render_level1(self):
         self.title_var.set("  T H R E A T P A D   Q U I C K   M E N U  ")
-        self.footer_var.set("press key or click  •  [ESC] close")
+        self.footer_var.set("press key or click  •  [0] skip/close  •  [ESC] close")
         tk.Frame(self.items_frame, bg=BG, height=6).grid(row=0, column=0)
         for i, (key, label) in enumerate(_ACTION_LABELS.items()):
             self._make_item(self.items_frame, key, label,
                             lambda k=key: self._pick_action(k), row=i + 1)
+        self._make_item(self.items_frame, "0", "Skip / Close",
+                        self._close, row=len(_ACTION_LABELS) + 1)
         tk.Frame(self.items_frame, bg=BG, height=6).grid(
-            row=len(_ACTION_LABELS) + 1, column=0)
+            row=len(_ACTION_LABELS) + 2, column=0)
 
     def _pick_action(self, key: str):
         self.action = key
@@ -445,26 +447,32 @@ class ASCIIMenuWindow:
         if self.action == "O":
             # Open Incident: level 2 = client picker
             self.title_var.set(f"  OPEN INCIDENT  ›  Select Client  ")
-            self.footer_var.set("press number or click  •  [ESC] back")
+            self.footer_var.set("press number or click  •  [0] skip  •  [ESC] back")
             clients = self._get_live_clients()
             tk.Frame(self.items_frame, bg=BG, height=6).grid(row=0, column=0)
             for i, client in enumerate(clients):
                 self._make_item(self.items_frame, str(i + 1), client,
                                 lambda idx=i: self._pick_open_client(idx),
                                 row=i + 1)
+            self._make_item(self.items_frame, "0", "Skip — show all recent notes",
+                            lambda: self._pick_open_client(-1),
+                            row=len(clients) + 1)
             tk.Frame(self.items_frame, bg=BG, height=6).grid(
-                row=len(clients) + 1, column=0)
+                row=len(clients) + 2, column=0)
         else:
             self.title_var.set(f"  {action_label.upper()}  ›  Select Template  ")
-            self.footer_var.set("press number or click  •  [ESC] back")
+            self.footer_var.set("press number or click  •  [0] skip  •  [ESC] back")
             templates = self._get_live_templates()
             tk.Frame(self.items_frame, bg=BG, height=6).grid(row=0, column=0)
             for i, name in enumerate(templates):
                 self._make_item(self.items_frame, str(i + 1), name,
                                 lambda idx=i: self._pick_template(idx),
                                 row=i + 1)
+            self._make_item(self.items_frame, "0", "Skip — blank note",
+                            lambda: self._pick_template(-1),
+                            row=len(templates) + 1)
             tk.Frame(self.items_frame, bg=BG, height=6).grid(
-                row=len(templates) + 1, column=0)
+                row=len(templates) + 2, column=0)
 
     def _pick_template(self, idx: int):
         self.template = idx
@@ -482,15 +490,19 @@ class ASCIIMenuWindow:
         action_label = _ACTION_LABELS[self.action]
 
         if self.action == "O":
-            # Show recent notes for the selected client
-            client_name = self._get_live_clients()[self._open_client]
-            self.title_var.set(f"  OPEN  ›  {client_name}  ›  Recent Notes  ")
-            self.footer_var.set("press number or click  •  [ESC] back")
-            entries = [e for e in self.history.get_all()
-                       if e.get("client") == client_name]
-            if not entries:
-                # also show entries with no client assigned
+            # Show recent notes — filtered by client or all if skipped
+            if self._open_client == -1:
+                client_name = ""
+                self.title_var.set(f"  OPEN  ›  All Recent Notes  ")
                 entries = self.history.get_all()
+            else:
+                client_name = self._get_live_clients()[self._open_client]
+                self.title_var.set(f"  OPEN  ›  {client_name}  ›  Recent Notes  ")
+                entries = [e for e in self.history.get_all()
+                           if e.get("client") == client_name]
+                if not entries:
+                    entries = self.history.get_all()
+            self.footer_var.set("press number or click  •  [ESC] back")
             tk.Frame(self.items_frame, bg=BG, height=6).grid(row=0, column=0)
             if not entries:
                 tk.Label(self.items_frame,
@@ -509,39 +521,62 @@ class ASCIIMenuWindow:
         else:
             # Client selector for new note
             templates  = self._get_live_templates()
-            tmpl_name  = templates[self.template]
+            tmpl_name  = "Blank Note" if self.template == -1 else templates[self.template]
             self.title_var.set(f"  {action_label.upper()}  ›  Select Client  ")
-            self.footer_var.set("press number or click  •  [ESC] back")
+            self.footer_var.set("press number or click  •  [0] skip  •  [ESC] back")
             clients = self._get_live_clients()
             tk.Frame(self.items_frame, bg=BG, height=6).grid(row=0, column=0)
             for i, client in enumerate(clients):
                 self._make_item(self.items_frame, str(i + 1), client,
                                 lambda idx=i: self._create_note(idx),
                                 row=i + 1)
+            self._make_item(self.items_frame, "0", "Skip — no client",
+                            lambda: self._create_note(-1),
+                            row=len(clients) + 1)
             tk.Frame(self.items_frame, bg=BG, height=6).grid(
-                row=len(clients) + 1, column=0)
+                row=len(clients) + 2, column=0)
 
     def _create_note(self, client_idx: int):
         templates   = self._get_live_templates()
-        tmpl_name   = templates[self.template]
-        client_name = self._get_live_clients()[client_idx]
-        tab_title   = f"{client_name} – {tmpl_name}"
+        # -1 = skip template (blank note)
+        tmpl_name   = "" if self.template == -1 else templates[self.template]
+        # -1 = skip client (no client)
+        clients     = self._get_live_clients()
+        client_name = "" if client_idx == -1 else clients[client_idx]
+
+        if tmpl_name and client_name:
+            tab_title = f"{client_name} – {tmpl_name}"
+        elif tmpl_name:
+            tab_title = tmpl_name
+        elif client_name:
+            tab_title = f"{client_name} – New Note"
+        else:
+            tab_title = f"New Note {_ts()}"
+
         # Use Templates menu content if available, else fall back to built-in template
         content = None
-        try:
-            app_templates = self.integration.app.templates
-            if app_templates and tmpl_name in app_templates:
-                content = (app_templates[tmpl_name]
-                           .replace("{date}", _ts())
-                           .replace("{datetime}", _now())
-                           .replace("{client}", client_name))
-        except Exception:
-            pass
-        if content is None:
-            content = _make_template(self.action, tmpl_name, client_name)
+        if tmpl_name:
+            try:
+                app_templates = self.integration.app.templates
+                if app_templates and tmpl_name in app_templates:
+                    content = (app_templates[tmpl_name]
+                               .replace("{date}", _ts())
+                               .replace("{datetime}", _now())
+                               .replace("{client}", client_name))
+            except Exception:
+                pass
+            if content is None:
+                content = _make_template(self.action, tmpl_name, client_name)
+        else:
+            content = f"=== NEW NOTE ===\nDate: {_ts()}\n"
+            if client_name:
+                content += f"Client: {client_name}\n"
+            content += "\n"
+
         self.integration.app.new_tab(tab_title, content)
         self.integration.current_client = client_name
-        self._set_active_client(client_name)
+        if client_name:
+            self._set_active_client(client_name)
         self._close()
 
     def _open_note(self, entry: dict):
@@ -560,37 +595,47 @@ class ASCIIMenuWindow:
             return
 
         if self.level == 1:
-            if key in _ACTION_LABELS:
+            if key == "0":
+                self._close()
+            elif key in _ACTION_LABELS:
                 self._pick_action(key)
 
         elif self.level == 2:
             if self.action == "O":
-                # number → client
-                if key.isdigit():
+                if key == "0":
+                    self._pick_open_client(-1)   # skip → all notes
+                elif key.isdigit():
                     idx = int(key) - 1
                     if 0 <= idx < len(self._get_live_clients()):
                         self._pick_open_client(idx)
             else:
                 templates = self._get_live_templates()
-                if key.isdigit():
+                if key == "0":
+                    self._pick_template(-1)      # skip → blank note
+                elif key.isdigit():
                     idx = int(key) - 1
                     if 0 <= idx < len(templates):
                         self._pick_template(idx)
 
         elif self.level == 3:
             if self.action == "O":
-                entries = [e for e in self.history.get_all()
-                           if e.get("client") ==
-                           self._get_live_clients()[self._open_client]]
-                if not entries:
+                if self._open_client == -1:
                     entries = self.history.get_all()
+                else:
+                    entries = [e for e in self.history.get_all()
+                               if e.get("client") ==
+                               self._get_live_clients()[self._open_client]]
+                    if not entries:
+                        entries = self.history.get_all()
                 if key.isdigit():
                     idx = int(key) - 1
                     if 0 <= idx < len(entries[:9]):
                         self._open_note(entries[idx])
             else:
                 clients = self._get_live_clients()
-                if key.isdigit():
+                if key == "0":
+                    self._create_note(-1)        # skip → no client
+                elif key.isdigit():
                     idx = int(key) - 1
                     if 0 <= idx < len(clients):
                         self._create_note(idx)
