@@ -540,13 +540,16 @@ class ASCIIMenuWindow:
         if content is None:
             content = _make_template(self.action, tmpl_name, client_name)
         self.integration.app.new_tab(tab_title, content)
-        # Store the client on the integration for Ctrl+1
         self.integration.current_client = client_name
+        self._set_active_client(client_name)
         self._close()
 
     def _open_note(self, entry: dict):
+        client_name = entry.get("client", "")
         self.integration.app.new_tab(entry["title"], entry["content"])
-        self.integration.current_client = entry.get("client", "")
+        self.integration.current_client = client_name
+        if client_name:
+            self._set_active_client(client_name)
         self._close()
 
     # -- key handler ----------------------------------------------------------
@@ -616,6 +619,20 @@ class ASCIIMenuWindow:
         self.integration.menu_window = None
 
     # ── helpers ──────────────────────────────────────────────────────────────
+
+    def _set_active_client(self, client_name: str):
+        """Select client in the main toolbar dropdown and update active_client."""
+        try:
+            app = self.integration.app
+            app.active_client = client_name
+            app.active_client_var.set(client_name)
+            try:
+                app._clear_contamination_highlights()
+            except Exception:
+                pass
+            app.update_status(f"Active client: {client_name}")
+        except Exception:
+            pass
 
     def _get_live_templates(self):
         """Return template names from app.templates (Templates menu) → config fallback."""
