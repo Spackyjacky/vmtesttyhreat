@@ -446,7 +446,7 @@ class ASCIIMenuWindow:
             # Open Incident: level 2 = client picker
             self.title_var.set(f"  OPEN INCIDENT  ›  Select Client  ")
             self.footer_var.set("press number or click  •  [ESC] back")
-            clients = self.config.clients()
+            clients = self._get_live_clients()
             tk.Frame(self.items_frame, bg=BG, height=6).grid(row=0, column=0)
             for i, client in enumerate(clients):
                 self._make_item(self.items_frame, str(i + 1), client,
@@ -483,7 +483,7 @@ class ASCIIMenuWindow:
 
         if self.action == "O":
             # Show recent notes for the selected client
-            client_name = self.config.clients()[self._open_client]
+            client_name = self._get_live_clients()[self._open_client]
             self.title_var.set(f"  OPEN  ›  {client_name}  ›  Recent Notes  ")
             self.footer_var.set("press number or click  •  [ESC] back")
             entries = [e for e in self.history.get_all()
@@ -512,7 +512,7 @@ class ASCIIMenuWindow:
             tmpl_name  = templates[self.template]
             self.title_var.set(f"  {action_label.upper()}  ›  Select Client  ")
             self.footer_var.set("press number or click  •  [ESC] back")
-            clients = self.config.clients()
+            clients = self._get_live_clients()
             tk.Frame(self.items_frame, bg=BG, height=6).grid(row=0, column=0)
             for i, client in enumerate(clients):
                 self._make_item(self.items_frame, str(i + 1), client,
@@ -524,14 +524,17 @@ class ASCIIMenuWindow:
     def _create_note(self, client_idx: int):
         templates   = self._get_live_templates()
         tmpl_name   = templates[self.template]
-        client_name = self.config.clients()[client_idx]
+        client_name = self._get_live_clients()[client_idx]
         tab_title   = f"{client_name} – {tmpl_name}"
-        # Use snippet content if available, else fall back to built-in template
+        # Use Templates menu content if available, else fall back to built-in template
         content = None
         try:
-            snippets = self.integration.app.snippets
-            if snippets and tmpl_name in snippets:
-                content = snippets[tmpl_name].replace("{date}", _ts())
+            app_templates = self.integration.app.templates
+            if app_templates and tmpl_name in app_templates:
+                content = (app_templates[tmpl_name]
+                           .replace("{date}", _ts())
+                           .replace("{datetime}", _now())
+                           .replace("{client}", client_name))
         except Exception:
             pass
         if content is None:
@@ -562,7 +565,7 @@ class ASCIIMenuWindow:
                 # number → client
                 if key.isdigit():
                     idx = int(key) - 1
-                    if 0 <= idx < len(self.config.clients()):
+                    if 0 <= idx < len(self._get_live_clients()):
                         self._pick_open_client(idx)
             else:
                 templates = self._get_live_templates()
@@ -575,7 +578,7 @@ class ASCIIMenuWindow:
             if self.action == "O":
                 entries = [e for e in self.history.get_all()
                            if e.get("client") ==
-                           self.config.clients()[self._open_client]]
+                           self._get_live_clients()[self._open_client]]
                 if not entries:
                     entries = self.history.get_all()
                 if key.isdigit():
@@ -583,7 +586,7 @@ class ASCIIMenuWindow:
                     if 0 <= idx < len(entries[:9]):
                         self._open_note(entries[idx])
             else:
-                clients = self.config.clients()
+                clients = self._get_live_clients()
                 if key.isdigit():
                     idx = int(key) - 1
                     if 0 <= idx < len(clients):
@@ -615,14 +618,24 @@ class ASCIIMenuWindow:
     # ── helpers ──────────────────────────────────────────────────────────────
 
     def _get_live_templates(self):
-        """Return template names: app snippets (live) → config fallback."""
+        """Return template names from app.templates (Templates menu) → config fallback."""
         try:
-            snippets = self.integration.app.snippets
-            if snippets:
-                return list(snippets.keys())
+            templates = self.integration.app.templates
+            if templates:
+                return list(templates.keys())
         except Exception:
             pass
         return self.config.templates(self.action)
+
+    def _get_live_clients(self):
+        """Return client list from app.config.CLIENTS (Settings → Clients tab)."""
+        try:
+            clients = self.integration.app.config.CLIENTS
+            if clients:
+                return list(clients)
+        except Exception:
+            pass
+        return self._get_live_clients()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -711,7 +724,7 @@ class ASCIIMenuIntegration:
 
         # 4. Update status bar
         try:
-            app.update_status("Ctrl+1: Defanged, copied & saved  ✔")
+            app.update_status("Ctrl+1: Defanged & copied  ✔")
             app.validation_label.config(text="Copied Safely", fg="green")
         except Exception:
             pass
@@ -720,10 +733,7 @@ class ASCIIMenuIntegration:
         title = app.notebook.tab(current, "text")
         self.history.save(title, text, self.current_client)
 
-        # 6. Save the tab
-        app.save_file()
-
-        # 7. Reopen the quick menu after a short delay
+        # 6. Reopen the quick menu after a short delay
         app.root.after(300, self.show_menu)
 
     # ── Ctrl+2 ───────────────────────────────────────────────────────────────
