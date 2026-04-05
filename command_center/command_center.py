@@ -2339,6 +2339,7 @@ class CommandCenterApp(tk.Tk):
         self._restore_window_state()
         self._build_layout()
         self._bind_shortcuts()
+        self._seed_defaults()
         self.show("dashboard")
         self.after(200, self._check_reviews_on_start)
         self.protocol("WM_DELETE_WINDOW", self._on_close)
@@ -2348,6 +2349,12 @@ class CommandCenterApp(tk.Tk):
             self.iconbitmap(default="")
         except Exception:
             pass
+
+    def _seed_defaults(self):
+        """Auto-populate SC-200 course on first launch if no programs exist."""
+        if not PROGRAMS_JSON.exists() or not load_programs():
+            prog = get_program_template("SC-200", "certification")
+            save_programs([prog])
 
     def _restore_window_state(self):
         state = load_window_state()
