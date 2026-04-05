@@ -1736,247 +1736,6 @@ class ProgramDetailScreen(tk.Frame):
 # MAIN APPLICATION
 # ══════════════════════════════════════════════════════════════════════════════
 
-class CommandCenterApp(tk.Tk):
-    def __init__(self):
-        super().__init__()
-        self.title("COMMAND CENTER — Personal Performance System")
-        self.minsize(900, 600)
-        self.configure(bg=BG)
-        self._current_screen = "dashboard"
-        self._setup_icon()
-        self._restore_window_state()
-        self._build_layout()
-        self._bind_shortcuts()
-        self.show("dashboard")
-        self.after(200, self._check_reviews_on_start)
-        self.protocol("WM_DELETE_WINDOW", self._on_close)
-
-    def _setup_icon(self):
-        try:
-            self.iconbitmap(default="")
-        except Exception:
-            pass
-
-    def _restore_window_state(self):
-        state = load_window_state()
-        geo = state.get("geometry", "1280x800")
-        try:
-            self.geometry(geo)
-        except Exception:
-            self.geometry("1280x800")
-
-    def _on_close(self):
-        save_window_state(self.geometry())
-        self.destroy()
-
-    def _bind_shortcuts(self):
-        self.bind("<Control-h>",      lambda e: self.show("dashboard"))
-        self.bind("<Control-m>",      lambda e: self.show("memory"))
-        self.bind("<Control-d>",      lambda e: self.show("decisions"))
-        self.bind("<Control-t>",      lambda e: self.show("tasks"))
-        self.bind("<Control-l>",      lambda e: self.show("log"))
-        self.bind("<Control-f>",      lambda e: self.show("search"))
-        self.bind("<Control-w>",      lambda e: self.show("wins"))
-        self.bind("<Control-p>",      lambda e: self.show("planner"))
-        self.bind("<Control-k>",      lambda e: self.show("kpis"))
-        self.bind("<Control-i>",      lambda e: self.show("incidents"))
-        self.bind("<Control-r>",      lambda e: self.show("courses"))
-        self.bind("<Control-n>",      lambda e: self._quick_focus())
-        self.bind("<Escape>",         lambda e: self.show("dashboard"))
-
-    def _quick_focus(self):
-        try:
-            self.quick_entry.focus_set()
-            self.quick_entry.select_range(0,"end")
-        except Exception:
-            pass
-
-    def _build_layout(self):
-        # ── Top bar ──
-        top = tk.Frame(self, bg=BG, height=44)
-        top.pack(fill="x")
-        top.pack_propagate(False)
-        tk.Label(top, text="▓ COMMAND CENTER", bg=BG, fg=ORANGE,
-                 font=("Consolas", 14, "bold")).pack(side="left", padx=16, pady=8)
-        self.clock_label = tk.Label(top, text="", bg=BG, fg=ORANGE_DIM, font=FONT_MONO_S)
-        self.clock_label.pack(side="right", padx=16)
-        self._tick()
-        tk.Frame(self, bg=ORANGE3, height=1).pack(fill="x")
-
-        # ── Quick capture bar ──
-        qbar = tk.Frame(self, bg=BG2, height=32)
-        qbar.pack(fill="x")
-        qbar.pack_propagate(False)
-        tk.Label(qbar, text="⚡ Quick Log:", bg=BG2, fg=ORANGE_DIM,
-                 font=FONT_MONO_S).pack(side="left", padx=(12,4), pady=4)
-        self.quick_var = tk.StringVar()
-        self.quick_entry = tk.Entry(qbar, textvariable=self.quick_var, bg=BG3, fg=ORANGE,
-                                    insertbackground=ORANGE, font=FONT_MONO_S,
-                                    relief="flat", bd=3, width=60)
-        self.quick_entry.pack(side="left", pady=3)
-        self.quick_entry.bind("<Return>", self._quick_log)
-        tk.Label(qbar, text="  Enter to log  |  Ctrl+N to focus  |  Ctrl+H=Home",
-                 bg=BG2, fg=ORANGE_DIM, font=("Consolas",7)).pack(side="left", padx=10)
-        tk.Frame(self, bg=ORANGE3, height=1).pack(fill="x")
-
-        # ── Main area ──
-        main = tk.Frame(self, bg=BG)
-        main.pack(fill="both", expand=True)
-        self.sidebar = tk.Frame(main, bg=BG2, width=172)
-        self.sidebar.pack(side="left", fill="y")
-        self.sidebar.pack_propagate(False)
-        tk.Frame(main, bg=ORANGE3, width=1).pack(side="left", fill="y")
-        self.content = tk.Frame(main, bg=PANEL)
-        self.content.pack(side="left", fill="both", expand=True)
-
-        # ── Status bar ──
-        tk.Frame(self, bg=ORANGE3, height=1).pack(fill="x")
-        self.status_bar = tk.Label(self, text="  Ready.  Ctrl+N = quick log", bg=BG,
-                                   fg=ORANGE_DIM, font=FONT_MONO_S, anchor="w")
-        self.status_bar.pack(fill="x", padx=10, pady=3)
-
-        self._build_sidebar()
-
-    def _quick_log(self, event=None):
-        text = self.quick_var.get().strip()
-        if not text:
-            return
-        append_daily_log(f"[quick] {text}")
-        index_memory("quick", text)
-        self.quick_var.set("")
-        self.status(f"Logged: {text[:50]}")
-
-    def _build_sidebar(self):
-        tk.Label(self.sidebar, text="\nNAVIGATION\n", bg=BG2, fg=ORANGE_DIM,
-                 font=("Consolas", 8, "bold")).pack(fill="x", padx=4)
-        tk.Frame(self.sidebar, bg=ORANGE3, height=1).pack(fill="x", padx=8, pady=2)
-
-        self.nav_buttons = {}
-        nav_items = [
-            ("dashboard",  "⌂  Dashboard"),
-            ("memory",     "◈  Memory"),
-            ("decisions",  "◆  Decisions"),
-            ("tasks",      "☰  Tasks"),
-            ("log",        "✎  Daily Log"),
-            ("search",     "⌕  Search"),
-            ("courses",    "◉  Courses"),
-            ("wins",       "★  Wins"),
-            ("planner",    "⬛  Weekly Plan"),
-            ("kpis",       "▲  KPI Tracker"),
-            ("incidents",  "⚠  Incidents"),
-        ]
-        for key, label in nav_items:
-            btn = tk.Button(
-                self.sidebar, text=label,
-                command=lambda k=key: self.show(k),
-                bg=BG2, fg=ORANGE, font=FONT_MONO,
-                relief="flat", anchor="w", padx=14, pady=6,
-                activebackground=ORANGE3, activeforeground=BG,
-                cursor="hand2", bd=0,
-            )
-            btn.pack(fill="x", pady=1)
-            self.nav_buttons[key] = btn
-
-        tk.Frame(self.sidebar, bg=ORANGE3, height=1).pack(fill="x", padx=8, pady=6)
-        self.review_badge = tk.Label(self.sidebar, text="", bg=BG2, fg=RED,
-                                     font=("Consolas", 8, "bold"), wraplength=152)
-        self.review_badge.pack(padx=6, pady=2)
-        tk.Frame(self.sidebar, bg=PANEL).pack(fill="both", expand=True)
-        tk.Label(self.sidebar, text="v3.0  tkinter", bg=BG2,
-                 fg=GREY, font=("Consolas", 7)).pack(pady=6)
-        self._update_badge()
-        self._schedule_badge_refresh()
-
-    def _schedule_badge_refresh(self):
-        """Auto-refresh badge and dashboard stats every 60 seconds."""
-        self._update_badge()
-        if self._current_screen == "dashboard":
-            for w in self.content.winfo_children():
-                if isinstance(w, DashboardScreen):
-                    try:
-                        w._refresh_stats()
-                    except Exception:
-                        pass
-        self.after(60000, self._schedule_badge_refresh)
-
-    def _update_badge(self):
-        n = len(get_flagged())
-        overdue_tasks = sum(1 for t in load_tasks()
-                            if t.get("due_date","") and t.get("due_date","") < today_str()
-                            and t.get("status") != "resolved")
-        lines = []
-        if n:           lines.append(f"⚠ {n} decision review(s)")
-        if overdue_tasks: lines.append(f"⚠ {overdue_tasks} overdue task(s)")
-        if lines:
-            self.review_badge.config(text="\n".join(lines), fg=RED)
-        else:
-            self.review_badge.config(text="✓ all clear", fg=GREEN)
-
-    def show(self, name):
-        self._current_screen = name
-        for k, btn in self.nav_buttons.items():
-            btn.config(bg=ORANGE3 if k == name else BG2,
-                       fg=BG if k == name else ORANGE)
-        for w in self.content.winfo_children():
-            w.destroy()
-        screen_map = {
-            "dashboard": DashboardScreen,
-            "memory":    MemoryScreen,
-            "decisions": DecisionScreen,
-            "tasks":     TaskScreen,
-            "log":       DailyLogScreen,
-            "search":    SearchScreen,
-            "courses":   CoursesScreen,
-            "wins":      WinsScreen,
-            "planner":   WeeklyPlannerScreen,
-            "kpis":      KPIScreen,
-            "incidents": IncidentTimelineScreen,
-        }
-        cls = screen_map.get(name)
-        if cls:
-            cls(self.content, self).pack(fill="both", expand=True)
-        self._update_badge()
-
-    def show_program(self, program_id: int):
-        self._current_screen = "courses"
-        for k, btn in self.nav_buttons.items():
-            btn.config(bg=ORANGE3 if k == "courses" else BG2,
-                       fg=BG if k == "courses" else ORANGE)
-        for w in self.content.winfo_children():
-            w.destroy()
-        ProgramDetailScreen(self.content, self, program_id).pack(fill="both", expand=True)
-        self._update_badge()
-
-    def status(self, msg):
-        self.status_bar.config(text=f"  ●  {msg}  —  {now_str()}")
-        self.after(6000, lambda: self.status_bar.config(
-            text="  Ready.  Ctrl+N = quick log"))
-
-    def _tick(self):
-        self.clock_label.config(text=datetime.now().strftime("  %A  %d %b %Y  %H:%M:%S  "))
-        self.after(1000, self._tick)
-
-    def _check_reviews_on_start(self):
-        flagged = get_flagged()
-        overdue = [t for t in load_tasks()
-                   if t.get("due_date","") and t.get("due_date","") < today_str()
-                   and t.get("status") != "resolved"]
-        msgs = []
-        if flagged:  msgs.append(f"• {len(flagged)} decision(s) due for review")
-        if overdue:  msgs.append(f"• {len(overdue)} overdue task(s)")
-        if msgs:
-            messagebox.showwarning("Attention Required",
-                "\n".join(msgs) + "\n\nCheck Decisions and Tasks.", parent=self)
-
-
-# ── Entry point ────────────────────────────────────────────────────────────────
-if __name__ == "__main__":
-    app = CommandCenterApp()
-    app.mainloop()
-
-# ── Wins & Achievements Screen ─────────────────────────────────────────────────
-WIN_CATS = ["Achievement","Compliment","Metric Hit","Recognition","Milestone","Other"]
-
 class WinsScreen(tk.Frame):
     def __init__(self, parent, app):
         super().__init__(parent, bg=PANEL)
@@ -2556,4 +2315,245 @@ class IncidentTimelineScreen(tk.Frame):
         save_incidents([i for i in load_incidents() if i["id"] != iid])
         self._refresh()
         self.app.status(f"Incident #{iid} deleted.")
+
+class CommandCenterApp(tk.Tk):
+    def __init__(self):
+        super().__init__()
+        self.title("COMMAND CENTER — Personal Performance System")
+        self.minsize(900, 600)
+        self.configure(bg=BG)
+        self._current_screen = "dashboard"
+        self._setup_icon()
+        self._restore_window_state()
+        self._build_layout()
+        self._bind_shortcuts()
+        self.show("dashboard")
+        self.after(200, self._check_reviews_on_start)
+        self.protocol("WM_DELETE_WINDOW", self._on_close)
+
+    def _setup_icon(self):
+        try:
+            self.iconbitmap(default="")
+        except Exception:
+            pass
+
+    def _restore_window_state(self):
+        state = load_window_state()
+        geo = state.get("geometry", "1280x800")
+        try:
+            self.geometry(geo)
+        except Exception:
+            self.geometry("1280x800")
+
+    def _on_close(self):
+        save_window_state(self.geometry())
+        self.destroy()
+
+    def _bind_shortcuts(self):
+        self.bind("<Control-h>",      lambda e: self.show("dashboard"))
+        self.bind("<Control-m>",      lambda e: self.show("memory"))
+        self.bind("<Control-d>",      lambda e: self.show("decisions"))
+        self.bind("<Control-t>",      lambda e: self.show("tasks"))
+        self.bind("<Control-l>",      lambda e: self.show("log"))
+        self.bind("<Control-f>",      lambda e: self.show("search"))
+        self.bind("<Control-w>",      lambda e: self.show("wins"))
+        self.bind("<Control-p>",      lambda e: self.show("planner"))
+        self.bind("<Control-k>",      lambda e: self.show("kpis"))
+        self.bind("<Control-i>",      lambda e: self.show("incidents"))
+        self.bind("<Control-r>",      lambda e: self.show("courses"))
+        self.bind("<Control-n>",      lambda e: self._quick_focus())
+        self.bind("<Escape>",         lambda e: self.show("dashboard"))
+
+    def _quick_focus(self):
+        try:
+            self.quick_entry.focus_set()
+            self.quick_entry.select_range(0,"end")
+        except Exception:
+            pass
+
+    def _build_layout(self):
+        # ── Top bar ──
+        top = tk.Frame(self, bg=BG, height=44)
+        top.pack(fill="x")
+        top.pack_propagate(False)
+        tk.Label(top, text="▓ COMMAND CENTER", bg=BG, fg=ORANGE,
+                 font=("Consolas", 14, "bold")).pack(side="left", padx=16, pady=8)
+        self.clock_label = tk.Label(top, text="", bg=BG, fg=ORANGE_DIM, font=FONT_MONO_S)
+        self.clock_label.pack(side="right", padx=16)
+        self._tick()
+        tk.Frame(self, bg=ORANGE3, height=1).pack(fill="x")
+
+        # ── Quick capture bar ──
+        qbar = tk.Frame(self, bg=BG2, height=32)
+        qbar.pack(fill="x")
+        qbar.pack_propagate(False)
+        tk.Label(qbar, text="⚡ Quick Log:", bg=BG2, fg=ORANGE_DIM,
+                 font=FONT_MONO_S).pack(side="left", padx=(12,4), pady=4)
+        self.quick_var = tk.StringVar()
+        self.quick_entry = tk.Entry(qbar, textvariable=self.quick_var, bg=BG3, fg=ORANGE,
+                                    insertbackground=ORANGE, font=FONT_MONO_S,
+                                    relief="flat", bd=3, width=60)
+        self.quick_entry.pack(side="left", pady=3)
+        self.quick_entry.bind("<Return>", self._quick_log)
+        tk.Label(qbar, text="  Enter to log  |  Ctrl+N to focus  |  Ctrl+H=Home",
+                 bg=BG2, fg=ORANGE_DIM, font=("Consolas",7)).pack(side="left", padx=10)
+        tk.Frame(self, bg=ORANGE3, height=1).pack(fill="x")
+
+        # ── Main area ──
+        main = tk.Frame(self, bg=BG)
+        main.pack(fill="both", expand=True)
+        self.sidebar = tk.Frame(main, bg=BG2, width=172)
+        self.sidebar.pack(side="left", fill="y")
+        self.sidebar.pack_propagate(False)
+        tk.Frame(main, bg=ORANGE3, width=1).pack(side="left", fill="y")
+        self.content = tk.Frame(main, bg=PANEL)
+        self.content.pack(side="left", fill="both", expand=True)
+
+        # ── Status bar ──
+        tk.Frame(self, bg=ORANGE3, height=1).pack(fill="x")
+        self.status_bar = tk.Label(self, text="  Ready.  Ctrl+N = quick log", bg=BG,
+                                   fg=ORANGE_DIM, font=FONT_MONO_S, anchor="w")
+        self.status_bar.pack(fill="x", padx=10, pady=3)
+
+        self._build_sidebar()
+
+    def _quick_log(self, event=None):
+        text = self.quick_var.get().strip()
+        if not text:
+            return
+        append_daily_log(f"[quick] {text}")
+        index_memory("quick", text)
+        self.quick_var.set("")
+        self.status(f"Logged: {text[:50]}")
+
+    def _build_sidebar(self):
+        tk.Label(self.sidebar, text="\nNAVIGATION\n", bg=BG2, fg=ORANGE_DIM,
+                 font=("Consolas", 8, "bold")).pack(fill="x", padx=4)
+        tk.Frame(self.sidebar, bg=ORANGE3, height=1).pack(fill="x", padx=8, pady=2)
+
+        self.nav_buttons = {}
+        nav_items = [
+            ("dashboard",  "⌂  Dashboard"),
+            ("memory",     "◈  Memory"),
+            ("decisions",  "◆  Decisions"),
+            ("tasks",      "☰  Tasks"),
+            ("log",        "✎  Daily Log"),
+            ("search",     "⌕  Search"),
+            ("courses",    "◉  Courses"),
+            ("wins",       "★  Wins"),
+            ("planner",    "⬛  Weekly Plan"),
+            ("kpis",       "▲  KPI Tracker"),
+            ("incidents",  "⚠  Incidents"),
+        ]
+        for key, label in nav_items:
+            btn = tk.Button(
+                self.sidebar, text=label,
+                command=lambda k=key: self.show(k),
+                bg=BG2, fg=ORANGE, font=FONT_MONO,
+                relief="flat", anchor="w", padx=14, pady=6,
+                activebackground=ORANGE3, activeforeground=BG,
+                cursor="hand2", bd=0,
+            )
+            btn.pack(fill="x", pady=1)
+            self.nav_buttons[key] = btn
+
+        tk.Frame(self.sidebar, bg=ORANGE3, height=1).pack(fill="x", padx=8, pady=6)
+        self.review_badge = tk.Label(self.sidebar, text="", bg=BG2, fg=RED,
+                                     font=("Consolas", 8, "bold"), wraplength=152)
+        self.review_badge.pack(padx=6, pady=2)
+        tk.Frame(self.sidebar, bg=PANEL).pack(fill="both", expand=True)
+        tk.Label(self.sidebar, text="v3.0  tkinter", bg=BG2,
+                 fg=GREY, font=("Consolas", 7)).pack(pady=6)
+        self._update_badge()
+        self._schedule_badge_refresh()
+
+    def _schedule_badge_refresh(self):
+        """Auto-refresh badge and dashboard stats every 60 seconds."""
+        self._update_badge()
+        if self._current_screen == "dashboard":
+            for w in self.content.winfo_children():
+                if isinstance(w, DashboardScreen):
+                    try:
+                        w._refresh_stats()
+                    except Exception:
+                        pass
+        self.after(60000, self._schedule_badge_refresh)
+
+    def _update_badge(self):
+        n = len(get_flagged())
+        overdue_tasks = sum(1 for t in load_tasks()
+                            if t.get("due_date","") and t.get("due_date","") < today_str()
+                            and t.get("status") != "resolved")
+        lines = []
+        if n:           lines.append(f"⚠ {n} decision review(s)")
+        if overdue_tasks: lines.append(f"⚠ {overdue_tasks} overdue task(s)")
+        if lines:
+            self.review_badge.config(text="\n".join(lines), fg=RED)
+        else:
+            self.review_badge.config(text="✓ all clear", fg=GREEN)
+
+    def show(self, name):
+        self._current_screen = name
+        for k, btn in self.nav_buttons.items():
+            btn.config(bg=ORANGE3 if k == name else BG2,
+                       fg=BG if k == name else ORANGE)
+        for w in self.content.winfo_children():
+            w.destroy()
+        screen_map = {
+            "dashboard": DashboardScreen,
+            "memory":    MemoryScreen,
+            "decisions": DecisionScreen,
+            "tasks":     TaskScreen,
+            "log":       DailyLogScreen,
+            "search":    SearchScreen,
+            "courses":   CoursesScreen,
+            "wins":      WinsScreen,
+            "planner":   WeeklyPlannerScreen,
+            "kpis":      KPIScreen,
+            "incidents": IncidentTimelineScreen,
+        }
+        cls = screen_map.get(name)
+        if cls:
+            cls(self.content, self).pack(fill="both", expand=True)
+        self._update_badge()
+
+    def show_program(self, program_id: int):
+        self._current_screen = "courses"
+        for k, btn in self.nav_buttons.items():
+            btn.config(bg=ORANGE3 if k == "courses" else BG2,
+                       fg=BG if k == "courses" else ORANGE)
+        for w in self.content.winfo_children():
+            w.destroy()
+        ProgramDetailScreen(self.content, self, program_id).pack(fill="both", expand=True)
+        self._update_badge()
+
+    def status(self, msg):
+        self.status_bar.config(text=f"  ●  {msg}  —  {now_str()}")
+        self.after(6000, lambda: self.status_bar.config(
+            text="  Ready.  Ctrl+N = quick log"))
+
+    def _tick(self):
+        self.clock_label.config(text=datetime.now().strftime("  %A  %d %b %Y  %H:%M:%S  "))
+        self.after(1000, self._tick)
+
+    def _check_reviews_on_start(self):
+        flagged = get_flagged()
+        overdue = [t for t in load_tasks()
+                   if t.get("due_date","") and t.get("due_date","") < today_str()
+                   and t.get("status") != "resolved"]
+        msgs = []
+        if flagged:  msgs.append(f"• {len(flagged)} decision(s) due for review")
+        if overdue:  msgs.append(f"• {len(overdue)} overdue task(s)")
+        if msgs:
+            messagebox.showwarning("Attention Required",
+                "\n".join(msgs) + "\n\nCheck Decisions and Tasks.", parent=self)
+
+
+# ── Entry point ────────────────────────────────────────────────────────────────
+if __name__ == "__main__":
+    app = CommandCenterApp()
+    app.mainloop()
+
+# ── Wins & Achievements Screen ─────────────────────────────────────────────────
+WIN_CATS = ["Achievement","Compliment","Metric Hit","Recognition","Milestone","Other"]
 
