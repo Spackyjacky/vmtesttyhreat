@@ -49,12 +49,12 @@ RED       = "#ff2200"
 GREY      = "#555555"
 WHITE     = "#e0e0e0"
 
-FONT_MONO   = ("Consolas", 10)
-FONT_MONO_S = ("Consolas", 9)
-FONT_MONO_L = ("Consolas", 12)
-FONT_BOLD   = ("Consolas", 10, "bold")
-FONT_BOLD_L = ("Consolas", 13, "bold")
-FONT_TITLE  = ("Consolas", 16, "bold")
+FONT_MONO   = ("Consolas", 12)
+FONT_MONO_S = ("Consolas", 11)
+FONT_MONO_L = ("Consolas", 13)
+FONT_BOLD   = ("Consolas", 12, "bold")
+FONT_BOLD_L = ("Consolas", 15, "bold")
+FONT_TITLE  = ("Consolas", 19, "bold")
 
 PRIORITIES      = ["critical", "high", "medium", "low"]
 PRIORITY_COLOUR = {"critical": RED, "high": ORANGE3, "medium": ORANGE, "low": GREY}
@@ -98,7 +98,19 @@ def _json_save(path, data):
 
 def load_wins():    return _json_load(WINS_JSON)
 def save_wins(d):   _json_save(WINS_JSON, d)
-def load_kpis():    return _json_load(KPIS_JSON)
+def load_kpis():
+    if not KPIS_JSON.exists():
+        return {"metrics": [], "entries": []}
+    try:
+        data = json.loads(KPIS_JSON.read_text())
+        if not isinstance(data, dict):
+            return {"metrics": [], "entries": []}
+        data.setdefault("metrics", [])
+        data.setdefault("entries", [])
+        return data
+    except Exception:
+        return {"metrics": [], "entries": []}
+
 def save_kpis(d):   _json_save(KPIS_JSON, d)
 def load_incidents():   return _json_load(INCIDENTS_JSON)
 def save_incidents(d):  _json_save(INCIDENTS_JSON, d)
@@ -346,7 +358,7 @@ def make_treeview(parent, columns, heights=12):
     style = ttk.Style()
     style.configure("CC.Treeview",
         background=BG2, foreground=ORANGE, fieldbackground=BG2,
-        font=FONT_MONO_S, rowheight=22, borderwidth=0)
+        font=FONT_MONO_S, rowheight=26, borderwidth=0)
     style.configure("CC.Treeview.Heading",
         background=BG3, foreground=ORANGE, font=FONT_BOLD,
         relief="flat", borderwidth=0)
@@ -1437,7 +1449,41 @@ class ProgramDetailScreen(tk.Frame):
         self.prog_canvas.pack(fill="x", padx=10, pady=6)
         self.prog_canvas.bind("<Configure>", lambda e: self._draw_progress())
 
-        # ── Two-pane ──
+        # ── Pomodoro timer (bottom-anchored) ──
+        pom_frame = tk.Frame(self, bg=BG3, highlightbackground=ORANGE3, highlightthickness=1)
+        pom_frame.pack(side="bottom", fill="x", padx=10, pady=(0,4))
+        tk.Label(pom_frame, text="◈ STUDY TIMER", bg=BG3, fg=ORANGE,
+                 font=FONT_BOLD).pack(side="left", padx=10, pady=6)
+        self._pom_running   = False
+        self._pom_seconds   = 25 * 60
+        self._pom_remaining = self._pom_seconds
+        self._pom_job       = None
+        self.pom_label = tk.Label(pom_frame, text="25:00", bg=BG3, fg=GREEN,
+                                   font=("Consolas", 14, "bold"))
+        self.pom_label.pack(side="left", padx=12)
+        styled_button(pom_frame, "▶ Start",  self._pom_start,  width=9).pack(side="left", padx=4)
+        styled_button(pom_frame, "⏸ Pause",  self._pom_pause,  width=9).pack(side="left", padx=4)
+        styled_button(pom_frame, "↺ Reset",  self._pom_reset,  width=9).pack(side="left", padx=4)
+        for mins in [25, 50, 5]:
+            styled_button(pom_frame, f"{mins}m",
+                          lambda m=mins: self._pom_set(m), width=5).pack(side="left", padx=2)
+        self.pom_session_label = tk.Label(pom_frame, text="", bg=BG3,
+                                           fg=ORANGE_DIM, font=FONT_MONO_S)
+        self.pom_session_label.pack(side="right", padx=10)
+
+        # ── Stats bar (bottom-anchored) ──
+        stats_bar = tk.Frame(self, bg=BG3, highlightbackground=ORANGE3, highlightthickness=1)
+        stats_bar.pack(side="bottom", fill="x", padx=10, pady=(0,4))
+        self.stat_labels = {}
+        for key in ("Total Hours","Completed","Remaining","Progress"):
+            col = tk.Frame(stats_bar, bg=BG3)
+            col.pack(side="left", expand=True, fill="x", ipadx=4, ipady=4)
+            tk.Label(col, text=key, bg=BG3, fg=ORANGE_DIM, font=FONT_MONO_S).pack()
+            lbl = tk.Label(col, text="—", bg=BG3, fg=ORANGE, font=FONT_BOLD)
+            lbl.pack()
+            self.stat_labels[key] = lbl
+
+        # ── Two-pane (fills remaining middle space) ──
         panes = tk.Frame(self, bg=PANEL)
         panes.pack(fill="both", expand=True, padx=10, pady=4)
         panes.columnconfigure(0, weight=1)
@@ -1499,40 +1545,6 @@ class ProgramDetailScreen(tk.Frame):
                       bg=ORANGE3, colour=BG).pack(side="left", padx=(0,4))
         styled_button(btn_row, "▶ In Progress", self._mark_in_progress, width=14).pack(side="left", padx=4)
         styled_button(btn_row, "— Reset", self._mark_not_started, width=10).pack(side="left", padx=4)
-
-        # ── Pomodoro timer ──
-        pom_frame = tk.Frame(self, bg=BG3, highlightbackground=ORANGE3, highlightthickness=1)
-        pom_frame.pack(fill="x", padx=10, pady=(0,4))
-        tk.Label(pom_frame, text="◈ STUDY TIMER", bg=BG3, fg=ORANGE,
-                 font=FONT_BOLD).pack(side="left", padx=10, pady=6)
-        self._pom_running   = False
-        self._pom_seconds   = 25 * 60
-        self._pom_remaining = self._pom_seconds
-        self._pom_job       = None
-        self.pom_label = tk.Label(pom_frame, text="25:00", bg=BG3, fg=GREEN,
-                                   font=("Consolas", 14, "bold"))
-        self.pom_label.pack(side="left", padx=12)
-        styled_button(pom_frame, "▶ Start",  self._pom_start,  width=9).pack(side="left", padx=4)
-        styled_button(pom_frame, "⏸ Pause",  self._pom_pause,  width=9).pack(side="left", padx=4)
-        styled_button(pom_frame, "↺ Reset",  self._pom_reset,  width=9).pack(side="left", padx=4)
-        for mins in [25, 50, 5]:
-            styled_button(pom_frame, f"{mins}m",
-                          lambda m=mins: self._pom_set(m), width=5).pack(side="left", padx=2)
-        self.pom_session_label = tk.Label(pom_frame, text="", bg=BG3,
-                                           fg=ORANGE_DIM, font=FONT_MONO_S)
-        self.pom_session_label.pack(side="right", padx=10)
-
-        # ── Stats bar ──
-        stats_bar = tk.Frame(self, bg=BG3, highlightbackground=ORANGE3, highlightthickness=1)
-        stats_bar.pack(fill="x", padx=10, pady=(0,8))
-        self.stat_labels = {}
-        for key in ("Total Hours","Completed","Remaining","Progress"):
-            col = tk.Frame(stats_bar, bg=BG3)
-            col.pack(side="left", expand=True, fill="x", ipadx=4, ipady=4)
-            tk.Label(col, text=key, bg=BG3, fg=ORANGE_DIM, font=FONT_MONO_S).pack()
-            lbl = tk.Label(col, text="—", bg=BG3, fg=ORANGE, font=FONT_BOLD)
-            lbl.pack()
-            self.stat_labels[key] = lbl
 
         self._refresh_modules()
 
