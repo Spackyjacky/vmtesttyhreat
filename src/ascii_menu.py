@@ -203,11 +203,18 @@ class NoteHistory:
             self.entries = []
 
     def save(self, title: str, content: str, client: str = ""):
+        # Preserve pinned status if this entry already exists
+        existing_pin = False
+        for e in self.entries:
+            if e["title"] == title and e["client"] == client:
+                existing_pin = e.get("pinned", False)
+                break
         entry = {
-            "title":     title,
-            "client":    client,
-            "content":   content,
-            "saved_at":  _now(),
+            "title":    title,
+            "client":   client,
+            "content":  content,
+            "saved_at": _now(),
+            "pinned":   existing_pin,
         }
         # Remove any existing entry with same title+client to avoid duplication
         self.entries = [e for e in self.entries
@@ -219,6 +226,17 @@ class NoteHistory:
                 json.dump(self.entries, f, indent=2)
         except Exception as e:
             print(f"[ascii_menu] NoteHistory save error: {e}")
+
+    def toggle_pin(self, title: str, client: str):
+        for e in self.entries:
+            if e["title"] == title and e["client"] == client:
+                e["pinned"] = not e.get("pinned", False)
+                break
+        try:
+            with open(NOTE_HISTORY_FILE, "w") as f:
+                json.dump(self.entries, f, indent=2)
+        except Exception:
+            pass
 
     def get_all(self):
         self._load()
@@ -300,6 +318,13 @@ class ASCIIMenuWindow:
 
         # For Open-incident flow the second level is client, not template
         self._open_client = None
+
+        # Template search filter (Level 2)
+        self._tmpl_filter  = ""
+        self._tmpl_entry   = None  # search entry widget
+        # History pin mode (Level 3 Open)
+        self._pin_mode        = False
+        self._history_display = []
 
         self._build()
 
@@ -461,18 +486,63 @@ class ASCIIMenuWindow:
                 row=len(clients) + 2, column=0)
         else:
             self.title_var.set(f"  {action_label.upper()}  ›  Select Template  ")
-            self.footer_var.set("press number or click  •  [0] skip  •  [ESC] back")
-            templates = self._get_live_templates()
-            tk.Frame(self.items_frame, bg=BG, height=6).grid(row=0, column=0)
-            for i, name in enumerate(templates):
-                self._make_item(self.items_frame, str(i + 1), name,
-                                lambda idx=i: self._pick_template(idx),
-                                row=i + 1)
-            self._make_item(self.items_frame, "0", "Skip — blank note",
-                            lambda: self._pick_template(-1),
-                            row=len(templates) + 1)
-            tk.Frame(self.items_frame, bg=BG, height=6).grid(
-                row=len(templates) + 2, column=0)
+            self.footer_var.set("type to filter  •  [0] skip  •  [ESC] back")
+            self._render_template_list()
+
+    def _render_template_list(self):
+        """Render the filtered template list for Level 2 (called on init and each keystroke)."""
+        # Search entry row
+        search_row = tk.Frame(self.items_frame, bg=BG)
+        search_row.grid(row=0, column=0, sticky="ew", padx=16, pady=(8, 4))
+        tk.Label(search_row, text="🔍 ", font=FONT, bg=BG, fg=FG_DIM).pack(side="left")
+        self._tmpl_entry = tk.Entry(search_row, font=FONT, bg="#1a1a1a", fg=FG_ITEM,
+                                    insertbackground=FG_ITEM, bd=0, width=28)
+        self._tmpl_entry.insert(0, self._tmpl_filter)
+        self._tmpl_entry.pack(side="left", fill="x", expand=True)
+        self._tmpl_entry.bind("<KeyRelease>", self._on_tmpl_filter_key)
+        self._tmpl_entry.focus_set()
+
+        all_templates = self._get_live_templates()
+        filt = self._tmpl_filter.lower()
+        filtered = [t for t in all_templates if filt in t.lower()] if filt else all_templates
+
+        tk.Frame(self.items_frame, bg=BG, height=4).grid(row=1, column=0)
+        for i, name in enumerate(filtered[:9]):
+            # Store actual index into full list so template content lookup works
+            real_idx = all_templates.index(name) if name in all_templates else i
+            self._make_item(self.items_frame, str(i + 1), name,
+                            lambda idx=real_idx: self._pick_template(idx),
+                            row=i + 2)
+        self._make_item(self.items_frame, "0", "Skip — blank note",
+                        lambda: self._pick_template(-1),
+                        row=len(filtered[:9]) + 2)
+        tk.Frame(self.items_frame, bg=BG, height=6).grid(
+            row=len(filtered[:9]) + 3, column=0)
+        # store filtered list for keyboard handler
+        self._filtered_templates = filtered[:9]
+        self._all_templates_cache = all_templates
+
+    def _on_tmpl_filter_key(self, event):
+        """Re-render template list when search text changes."""
+        if self._tmpl_entry:
+            new_filter = self._tmpl_entry.get()
+            if new_filter != self._tmpl_filter:
+                self._tmpl_filter = new_filter
+                self._clear_items()
+                self._render_template_list()
+                return
+        # Pass digits to the normal key handler even when entry is focused
+        if event.char and event.char.isdigit():
+            key = event.char
+            all_t = getattr(self, '_all_templates_cache', self._get_live_templates())
+            filt  = getattr(self, '_filtered_templates', all_t)
+            if key == '0':
+                self._pick_template(-1)
+            else:
+                idx = int(key) - 1
+                if 0 <= idx < len(filt):
+                    real = all_t.index(filt[idx]) if filt[idx] in all_t else idx
+                    self._pick_template(real)
 
     def _pick_template(self, idx: int):
         self.template = idx
@@ -502,7 +572,7 @@ class ASCIIMenuWindow:
                            if e.get("client") == client_name]
                 if not entries:
                     entries = self.history.get_all()
-            self.footer_var.set("press number or click  •  [ESC] back")
+            self.footer_var.set("press number or click  •  [P+#] pin  •  [ESC] back")
             tk.Frame(self.items_frame, bg=BG, height=6).grid(row=0, column=0)
             if not entries:
                 tk.Label(self.items_frame,
@@ -510,8 +580,14 @@ class ASCIIMenuWindow:
                          font=FONT, bg=BG, fg=FG_DIM).grid(
                     row=1, column=0, padx=20, pady=10)
             else:
-                for i, entry in enumerate(entries[:9]):
-                    label = f"{entry['saved_at'][:16]}  {entry['title']}"
+                # Pinned notes first, then recents
+                pinned   = [e for e in entries if e.get("pinned")]
+                unpinned = [e for e in entries if not e.get("pinned")]
+                display  = (pinned + unpinned)[:9]
+                self._history_display = display
+                for i, entry in enumerate(display):
+                    pin_icon = "📌 " if entry.get("pinned") else ""
+                    label = f"{pin_icon}{entry['saved_at'][:16]}  {entry['title']}"
                     self._make_item(self.items_frame, str(i + 1), label,
                                     lambda e=entry: self._open_note(e),
                                     row=i + 1)
@@ -537,9 +613,21 @@ class ASCIIMenuWindow:
                 row=len(clients) + 2, column=0)
 
     def _create_note(self, client_idx: int):
-        templates   = self._get_live_templates()
-        # -1 = skip template (blank note)
-        tmpl_name   = "" if self.template == -1 else templates[self.template]
+        templates = self._get_live_templates()
+        # -1 = skip template: try client default_template first
+        if self.template == -1:
+            client_idx_for_default = client_idx if client_idx != -1 else None
+            tmpl_name = ""
+            if client_idx_for_default is not None:
+                client_name_tmp = self._get_live_clients()[client_idx_for_default]
+                try:
+                    tmpl_name = (self.integration.app.clients
+                                 .get(client_name_tmp, {})
+                                 .get("default_template", ""))
+                except Exception:
+                    tmpl_name = ""
+        else:
+            tmpl_name = templates[self.template]
         # -1 = skip client (no client)
         clients     = self._get_live_clients()
         client_name = "" if client_idx == -1 else clients[client_idx]
@@ -609,28 +697,52 @@ class ASCIIMenuWindow:
                     if 0 <= idx < len(self._get_live_clients()):
                         self._pick_open_client(idx)
             else:
-                templates = self._get_live_templates()
+                # Use filtered list if search is active, else full list
+                filtered = getattr(self, '_filtered_templates', None) or self._get_live_templates()
+                all_t    = getattr(self, '_all_templates_cache', None) or self._get_live_templates()
                 if key == "0":
-                    self._pick_template(-1)      # skip → blank note
+                    self._pick_template(-1)
                 elif key.isdigit():
                     idx = int(key) - 1
-                    if 0 <= idx < len(templates):
-                        self._pick_template(idx)
+                    if 0 <= idx < len(filtered):
+                        real = all_t.index(filtered[idx]) if filtered[idx] in all_t else idx
+                        self._pick_template(real)
 
         elif self.level == 3:
             if self.action == "O":
-                if self._open_client == -1:
-                    entries = self.history.get_all()
-                else:
-                    entries = [e for e in self.history.get_all()
-                               if e.get("client") ==
-                               self._get_live_clients()[self._open_client]]
-                    if not entries:
+                display = getattr(self, '_history_display', [])
+                if not display:
+                    # rebuild display from history
+                    if self._open_client == -1:
                         entries = self.history.get_all()
+                    else:
+                        entries = [e for e in self.history.get_all()
+                                   if e.get("client") ==
+                                   self._get_live_clients()[self._open_client]]
+                        if not entries:
+                            entries = self.history.get_all()
+                    pinned   = [e for e in entries if e.get("pinned")]
+                    unpinned = [e for e in entries if not e.get("pinned")]
+                    display  = (pinned + unpinned)[:9]
+                if key == "P":
+                    # Next digit press will toggle pin for that entry
+                    self._pin_mode = True
+                    self.footer_var.set("press number to pin/unpin that note")
+                    return
+                if getattr(self, '_pin_mode', False) and key.isdigit():
+                    self._pin_mode = False
+                    idx = int(key) - 1
+                    if 0 <= idx < len(display):
+                        e = display[idx]
+                        self.history.toggle_pin(e["title"], e.get("client",""))
+                        # re-render
+                        self.level = 3
+                        self._render()
+                    return
                 if key.isdigit():
                     idx = int(key) - 1
-                    if 0 <= idx < len(entries[:9]):
-                        self._open_note(entries[idx])
+                    if 0 <= idx < len(display):
+                        self._open_note(display[idx])
             else:
                 clients = self._get_live_clients()
                 if key == "0":

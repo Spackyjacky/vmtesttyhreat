@@ -63,6 +63,7 @@ class Config:
         'abuseipdb': ''
     }
     CLIENTS = ["Client Alpha", "Client Beta", "Client Gamma"]
+    CLIPBOARD_CLEAR_DELAY = 0   # seconds after copy; 0 = disabled
 
 
 # --------------------- System Theme Detection ---------------------
@@ -289,6 +290,12 @@ class SOCNotesApp:
         self._action_log = []
         self._traffic_light_job = None
         self._tab_locked_client = {}
+        self._closed_tabs      = []   # list of (title, content, filepath) — recently closed
+        self._pinned_tabs      = set()
+        self._bookmarks        = {}   # {frame: set of line numbers}
+        self._redaction_on     = False
+        self._clipboard_clear_job = None
+        self._ioc_panel_win    = None
         
         # IOC patterns for better detection
         self.ioc_patterns = {
@@ -351,6 +358,7 @@ class SOCNotesApp:
                     self.config.TRAINING_WHEELS = settings.get('training_wheels', False)
                     self.config.COPY_CLEAR = settings.get('copy_clear', False)
                     self.config.COPY_COUNT_WARN = settings.get('copy_count_warn', True)
+                    self.config.CLIPBOARD_CLEAR_DELAY = settings.get('clipboard_clear_delay', 0)
                     raw_clients = settings.get('clients', {})
                     # Migrate: older saves stored clients as a plain list of names
                     if isinstance(raw_clients, list):
@@ -388,6 +396,7 @@ class SOCNotesApp:
                 'training_wheels': self.config.TRAINING_WHEELS,
                 'copy_clear': self.config.COPY_CLEAR,
                 'copy_count_warn': self.config.COPY_COUNT_WARN,
+                'clipboard_clear_delay': self.config.CLIPBOARD_CLEAR_DELAY,
                 'clients': self.clients,
                 'active_client': self.active_client,
                 'theme_name': self.config.THEME_NAME,
@@ -495,6 +504,10 @@ class SOCNotesApp:
         
         file_menu.add_separator()
         file_menu.add_command(label="Export IOCs...", command=self.export_iocs, accelerator="Ctrl+E")
+        file_menu.add_command(label="Export HTML Report...", command=self.export_html_report)
+        file_menu.add_command(label="Export JSON Report...", command=self.export_json_report)
+        file_menu.add_separator()
+        file_menu.add_command(label="Reopen Closed Tab", command=self.reopen_closed_tab, accelerator="Ctrl+Shift+T")
         file_menu.add_separator()
         file_menu.add_command(
             label="Quick Action Menu  Ctrl+`",
@@ -516,8 +529,14 @@ class SOCNotesApp:
         edit_menu.add_command(label="Defang IOCs", command=self.defang_text, accelerator="Ctrl+D")
         edit_menu.add_command(label="Refang IOCs", command=self.refang_text, accelerator="Ctrl+R")
         edit_menu.add_command(label="Extract IOCs", command=self.extract_iocs, accelerator="Ctrl+I")
+        edit_menu.add_command(label="IOC Panel (live)", command=self.toggle_ioc_panel)
         if IOC_ENRICHMENT_AVAILABLE:
             edit_menu.add_command(label="Enrich IOCs...", command=self.enrich_iocs, accelerator="Ctrl+Shift+E")
+        edit_menu.add_separator()
+        edit_menu.add_command(label="Jump to Line...", command=self.jump_to_line, accelerator="Ctrl+G")
+        edit_menu.add_command(label="Toggle Bookmark", command=self.toggle_bookmark, accelerator="F2")
+        edit_menu.add_command(label="Next Bookmark", command=self.next_bookmark, accelerator="Ctrl+F2")
+        edit_menu.add_command(label="Prev Bookmark", command=self.prev_bookmark, accelerator="Shift+F2")
         self.menubar.add_cascade(label="Edit", menu=edit_menu)
 
         # Templates menu
@@ -543,6 +562,9 @@ class SOCNotesApp:
         view_menu.add_separator()
         view_menu.add_command(label="Increase Font Size", command=self.increase_font_size, accelerator="Ctrl++")
         view_menu.add_command(label="Decrease Font Size", command=self.decrease_font_size, accelerator="Ctrl+-")
+        view_menu.add_separator()
+        view_menu.add_command(label="🔴 Toggle Redaction Mode", command=self.toggle_redaction)
+        view_menu.add_command(label="🔒 Lock Session", command=self.lock_session, accelerator="Ctrl+L")
         self.menubar.add_cascade(label="View", menu=view_menu)
         
         # Tools menu
@@ -807,8 +829,15 @@ class SOCNotesApp:
             self.root.bind('<Control-Shift-E>', lambda e: self.enrich_iocs())
         self.root.bind('<Control-z>', lambda e: self.undo())
         self.root.bind('<Control-y>', lambda e: self.redo())
-        self.root.bind('<Control-plus>', lambda e: self.increase_font_size())
+        self.root.bind('<Control-plus>',  lambda e: self.increase_font_size())
+        self.root.bind('<Control-equal>', lambda e: self.increase_font_size())
         self.root.bind('<Control-minus>', lambda e: self.decrease_font_size())
+        self.root.bind('<Control-Shift-T>', lambda e: self.reopen_closed_tab())
+        self.root.bind('<Control-l>', lambda e: self.lock_session())
+        self.root.bind('<Control-g>', lambda e: self.jump_to_line())
+        self.root.bind('<F2>',        lambda e: self.toggle_bookmark())
+        self.root.bind('<Control-F2>', lambda e: self.next_bookmark())
+        self.root.bind('<Shift-F2>',   lambda e: self.prev_bookmark())
         # ASCII Quick Menu keybindings
         if self.ascii_menu_integration:
             self.ascii_menu_integration.bind_keys()
@@ -2087,26 +2116,40 @@ class SOCNotesApp:
         if self.config.SYNTAX_HIGHLIGHTING:
             self.apply_syntax_highlighting(text_frame.text)
 
-    def close_tab(self):
-        current = self.notebook.select()
+    def close_tab(self, tab_id=None):
+        current = tab_id or self.notebook.select()
         if not current:
             return
-        
+
         current_frame = self.notebook.nametowidget(current)
+
+        # Block close if tab is pinned
+        if current_frame in self._pinned_tabs:
+            messagebox.showinfo("Tab Pinned",
+                "This tab is pinned. Right-click the tab and choose 'Unpin Tab' to close it.")
+            return
+
         text_widget = self.get_text_widget(current_frame)
         tab_text = text_widget.get("1.0", "end-1c")
-        
+
         if tab_text.strip():
             if not messagebox.askyesno("Confirm", "Close tab without saving?"):
                 return
-        
+
+        # Save to recently-closed stack (max 15)
+        title    = self.notebook.tab(current, "text")
+        filepath = self.current_file_paths.get(current)
+        self._closed_tabs.append((title, tab_text, filepath))
+        self._closed_tabs = self._closed_tabs[-15:]
+
         if current_frame in self.tabs:
             del self.tabs[current_frame]
         if current in self.current_file_paths:
             del self.current_file_paths[current]
+        self._pinned_tabs.discard(current_frame)
+        self._bookmarks.pop(current_frame, None)
         self.notebook.forget(current)
-        
-        # If no tabs left, create a new one
+
         if len(self.tabs) == 0:
             self.new_tab()
 
@@ -2221,6 +2264,14 @@ class SOCNotesApp:
         text_widget = self.get_text_widget(current_frame)
         text = text_widget.get("1.0", "end-1c")
 
+        # Count items before defanging for the summary
+        _url_count    = len(re.findall(r'https?://', text, re.IGNORECASE))
+        _ip_count     = len(re.findall(r'\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b', text))
+        _email_count  = len(re.findall(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b', text))
+        _domain_count = len(re.findall(
+            r'\b[a-zA-Z0-9](?:[a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?'
+            r'(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)+\b', text))
+
         # Defang URLs first (to avoid double defanging)
         text = re.sub(r"https://", "hxxps[://]", text, flags=re.IGNORECASE)
         text = re.sub(r"http://", "hxxp[://]", text, flags=re.IGNORECASE)
@@ -2242,10 +2293,10 @@ class SOCNotesApp:
         # Defang dots in domains/IPs
         domain_pattern = r'\b[a-zA-Z0-9](?:[a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)+\b'
         ip_pattern = r'\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b'
-        
+
         def defang_dots(match):
             return match.group().replace('.', '[.]')
-        
+
         text = re.sub(domain_pattern, defang_dots, text)
         text = re.sub(ip_pattern, defang_dots, text)
 
@@ -2253,20 +2304,27 @@ class SOCNotesApp:
         text = text.replace('#', '[#]')
 
         # Defang @ symbols adjacent to # (e.g. @#channel, user@#tag)
-        # After # is already replaced with [#], catch @ next to [#]
-        text = re.sub(r'@(?=\[#\])', '[@]', text)   # @ immediately before [#]
-        text = re.sub(r'(?<=\[#\])@', '[@]', text)  # @ immediately after [#]
+        text = re.sub(r'@(?=\[#\])', '[@]', text)
+        text = re.sub(r'(?<=\[#\])@', '[@]', text)
 
         text_widget.delete("1.0", "end")
         text_widget.insert("1.0", text)
-        
+
         if self.config.SYNTAX_HIGHLIGHTING:
             self.apply_syntax_highlighting(text_widget)
-        
+
         self._mileage['defangs'] = self._mileage.get('defangs', 0) + 1
         self._log_action('defang', 'IOCs defanged')
         self.root.after(200, self._update_traffic_light)
-        self.update_status("Defanged IOCs")
+
+        # Build a concise summary
+        parts = []
+        if _url_count:    parts.append(f"{_url_count} URL{'s' if _url_count>1 else ''}")
+        if _ip_count:     parts.append(f"{_ip_count} IP{'s' if _ip_count>1 else ''}")
+        if _email_count:  parts.append(f"{_email_count} email{'s' if _email_count>1 else ''}")
+        if _domain_count: parts.append(f"{_domain_count} domain{'s' if _domain_count>1 else ''}")
+        summary = "Defanged: " + ", ".join(parts) if parts else "Defanged (nothing found)"
+        self.update_status(summary)
 
     def refang_text(self):
         current = self.notebook.select()
@@ -2779,6 +2837,7 @@ class SOCNotesApp:
             self._mileage['copies'] = self._mileage.get('copies', 0) + 1
             self._log_action('copy', f'copy #{cnt} for this tab')
             self._update_traffic_light()
+            self.schedule_clipboard_clear()
             if self.config.COPY_CLEAR:
                 text_widget.delete("1.0", "end")
                 self._tab_copy_counts[current_frame] = 0
@@ -2991,75 +3050,95 @@ class SOCNotesApp:
         if self.find_dialog and self.find_dialog.winfo_exists():
             self.find_dialog.focus()
             return
-        
+
+        self._regex_find_var = tk.BooleanVar(value=False)
+
         self.find_dialog = tk.Toplevel(self.root)
         self.find_dialog.title("Find")
-        self.find_dialog.geometry("350x120")
+        self.find_dialog.geometry("380x130")
         self.find_dialog.transient(self.root)
-        
+
         tk.Label(self.find_dialog, text="Find:").grid(row=0, column=0, padx=5, pady=5, sticky="w")
         self.find_entry = tk.Entry(self.find_dialog, width=30)
         self.find_entry.grid(row=0, column=1, padx=5, pady=5)
         self.find_entry.focus()
-        
+
+        tk.Checkbutton(self.find_dialog, text="Regex",
+                       variable=self._regex_find_var).grid(row=0, column=2, padx=4)
+
         button_frame = tk.Frame(self.find_dialog)
-        button_frame.grid(row=1, column=0, columnspan=2, pady=10)
-        
+        button_frame.grid(row=1, column=0, columnspan=3, pady=10)
+
         tk.Button(button_frame, text="Find Next", command=self.find_next).pack(side="left", padx=5)
-        tk.Button(button_frame, text="Find All", command=self.find_all).pack(side="left", padx=5)
-        tk.Button(button_frame, text="Clear", command=self.clear_find).pack(side="left", padx=5)
-        
+        tk.Button(button_frame, text="Find All",  command=self.find_all).pack(side="left", padx=5)
+        tk.Button(button_frame, text="Clear",     command=self.clear_find).pack(side="left", padx=5)
+
         self.find_entry.bind('<Return>', lambda e: self.find_next())
 
     def show_replace_dialog(self):
         if self.find_dialog and self.find_dialog.winfo_exists():
             self.find_dialog.destroy()
-        
+
+        self._regex_find_var = tk.BooleanVar(value=False)
+
         self.find_dialog = tk.Toplevel(self.root)
         self.find_dialog.title("Find and Replace")
-        self.find_dialog.geometry("350x180")
+        self.find_dialog.geometry("400x200")
         self.find_dialog.transient(self.root)
-        
+
         tk.Label(self.find_dialog, text="Find:").grid(row=0, column=0, padx=5, pady=5, sticky="w")
         self.find_entry = tk.Entry(self.find_dialog, width=30)
         self.find_entry.grid(row=0, column=1, padx=5, pady=5)
-        
+        tk.Checkbutton(self.find_dialog, text="Regex",
+                       variable=self._regex_find_var).grid(row=0, column=2, padx=4)
+
         tk.Label(self.find_dialog, text="Replace:").grid(row=1, column=0, padx=5, pady=5, sticky="w")
         self.replace_entry = tk.Entry(self.find_dialog, width=30)
         self.replace_entry.grid(row=1, column=1, padx=5, pady=5)
-        
+
         self.find_entry.focus()
-        
+
         button_frame = tk.Frame(self.find_dialog)
-        button_frame.grid(row=2, column=0, columnspan=2, pady=10)
-        
-        tk.Button(button_frame, text="Find Next", command=self.find_next).pack(side="left", padx=2)
-        tk.Button(button_frame, text="Replace", command=self.replace_current).pack(side="left", padx=2)
+        button_frame.grid(row=2, column=0, columnspan=3, pady=10)
+
+        tk.Button(button_frame, text="Find Next",   command=self.find_next).pack(side="left", padx=2)
+        tk.Button(button_frame, text="Replace",     command=self.replace_current).pack(side="left", padx=2)
         tk.Button(button_frame, text="Replace All", command=self.replace_all).pack(side="left", padx=2)
-        tk.Button(button_frame, text="Clear", command=self.clear_find).pack(side="left", padx=2)
-        
+        tk.Button(button_frame, text="Clear",       command=self.clear_find).pack(side="left", padx=2)
+
         self.find_entry.bind('<Return>', lambda e: self.find_next())
+
+    def _use_regex(self):
+        return getattr(self, '_regex_find_var', None) and self._regex_find_var.get()
 
     def find_next(self):
         if not hasattr(self, 'find_entry'):
             return
-        
+
         term = self.find_entry.get()
         current = self.notebook.select()
         if not current or not term:
             return
-        
+
+        use_regex = self._use_regex()
         current_frame = self.notebook.nametowidget(current)
-        text_widget = self.get_text_widget(current_frame)
-        
-        start_pos = text_widget.index(tk.INSERT)
-        pos = text_widget.search(term, start_pos, stopindex="end", nocase=True)
-        
-        if not pos:
-            pos = text_widget.search(term, "1.0", stopindex=start_pos, nocase=True)
-        
+        text_widget   = self.get_text_widget(current_frame)
+        count_var     = tk.IntVar()
+
+        try:
+            start_pos = text_widget.index(tk.INSERT)
+            pos = text_widget.search(term, start_pos, stopindex="end",
+                                     nocase=not use_regex, regexp=use_regex, count=count_var)
+            if not pos:
+                pos = text_widget.search(term, "1.0", stopindex=start_pos,
+                                         nocase=not use_regex, regexp=use_regex, count=count_var)
+        except Exception:
+            self.update_status("Invalid search pattern")
+            return
+
         if pos:
-            end_pos = f"{pos}+{len(term)}c"
+            match_len = count_var.get() if use_regex else len(term)
+            end_pos   = f"{pos}+{match_len}c"
             text_widget.tag_remove("sel", "1.0", "end")
             text_widget.tag_add("sel", pos, end_pos)
             text_widget.mark_set(tk.INSERT, end_pos)
@@ -3068,29 +3147,36 @@ class SOCNotesApp:
     def find_all(self):
         if not hasattr(self, 'find_entry'):
             return
-        
+
         term = self.find_entry.get()
         current = self.notebook.select()
         if not current or not term:
             return
-        
+
+        use_regex     = self._use_regex()
         current_frame = self.notebook.nametowidget(current)
-        text_widget = self.get_text_widget(current_frame)
-        
+        text_widget   = self.get_text_widget(current_frame)
+        count_var     = tk.IntVar()
+
         text_widget.tag_remove("found", "1.0", "end")
-        if term:
-            idx = "1.0"
-            count = 0
+        idx   = "1.0"
+        count = 0
+        try:
             while True:
-                idx = text_widget.search(term, idx, nocase=True, stopindex="end")
+                idx = text_widget.search(term, idx, nocase=not use_regex,
+                                         regexp=use_regex, stopindex="end", count=count_var)
                 if not idx:
                     break
-                lastidx = f"{idx}+{len(term)}c"
+                match_len = count_var.get() if use_regex else len(term)
+                lastidx   = f"{idx}+{match_len}c"
                 text_widget.tag_add("found", idx, lastidx)
                 idx = lastidx
                 count += 1
-            text_widget.tag_config("found", background="yellow")
-            self.update_status(f"Found {count} occurrences")
+        except Exception:
+            self.update_status("Invalid search pattern")
+            return
+        text_widget.tag_config("found", background="yellow")
+        self.update_status(f"Found {count} occurrence{'s' if count != 1 else ''}")
 
     def replace_current(self):
         if not hasattr(self, 'find_entry') or not hasattr(self, 'replace_entry'):
@@ -3115,27 +3201,35 @@ class SOCNotesApp:
     def replace_all(self):
         if not hasattr(self, 'find_entry') or not hasattr(self, 'replace_entry'):
             return
-        
-        find_term = self.find_entry.get()
+
+        find_term    = self.find_entry.get()
         replace_term = self.replace_entry.get()
-        current = self.notebook.select()
-        
+        current      = self.notebook.select()
+
         if not current or not find_term:
             return
-        
+
+        use_regex     = self._use_regex()
         current_frame = self.notebook.nametowidget(current)
-        text_widget = self.get_text_widget(current_frame)
-        
-        text = text_widget.get("1.0", "end-1c")
-        count = text.count(find_term)
-        
+        text_widget   = self.get_text_widget(current_frame)
+        text          = text_widget.get("1.0", "end-1c")
+
+        try:
+            if use_regex:
+                new_text, count = re.subn(find_term, replace_term, text)
+            else:
+                count    = text.count(find_term)
+                new_text = text.replace(find_term, replace_term)
+        except Exception:
+            self.update_status("Invalid regex pattern")
+            return
+
         if count > 0:
-            new_text = text.replace(find_term, replace_term)
             text_widget.delete("1.0", "end")
             text_widget.insert("1.0", new_text)
             if self.config.SYNTAX_HIGHLIGHTING:
                 self.apply_syntax_highlighting(text_widget)
-            self.update_status(f"Replaced {count} occurrences")
+            self.update_status(f"Replaced {count} occurrence{'s' if count != 1 else ''}")
 
     def clear_find(self):
         current = self.notebook.select()
@@ -3608,7 +3702,16 @@ class SOCNotesApp:
             text="Copy-Count: warn if the same note is copied more than once",
             variable=self.copy_count_warn_var).pack(anchor="w", padx=5, pady=2)
         ttk.Label(copy_frame, text="Warns if Safe Copy is pressed again before the note changes.",
-            foreground="grey", font=("Arial", 8)).pack(anchor="w", padx=20, pady=(0,6))
+            foreground="grey", font=("Arial", 8)).pack(anchor="w", padx=20, pady=(0,4))
+
+        cb_frame = ttk.Frame(copy_frame)
+        cb_frame.pack(fill="x", padx=5, pady=(2, 6))
+        ttk.Label(cb_frame, text="Auto-clear clipboard after (seconds, 0 = off):").pack(side="left")
+        self.clipboard_clear_var = tk.IntVar(value=self.config.CLIPBOARD_CLEAR_DELAY)
+        ttk.Spinbox(cb_frame, from_=0, to=300, textvariable=self.clipboard_clear_var,
+                    width=5).pack(side="left", padx=6)
+        ttk.Label(cb_frame, text="(clears clipboard automatically after each Safe Copy)",
+                  foreground="grey", font=("Arial", 8)).pack(side="left")
         autosave_frame = ttk.LabelFrame(parent, text="Auto-save")
         autosave_frame.pack(fill="x", padx=10, pady=5)
         ttk.Label(autosave_frame, text="Auto-save interval (minutes):").pack(anchor="w", padx=5, pady=2)
@@ -3701,6 +3804,8 @@ class SOCNotesApp:
             self.config.COPY_CLEAR = self.copy_clear_var.get()
         if hasattr(self, 'copy_count_warn_var'):
             self.config.COPY_COUNT_WARN = self.copy_count_warn_var.get()
+        if hasattr(self, 'clipboard_clear_var'):
+            self.config.CLIPBOARD_CLEAR_DELAY = self.clipboard_clear_var.get()
         if hasattr(self, 'theme_preset_var'):
             self.config.THEME_NAME = self.theme_preset_var.get()
         
@@ -3961,7 +4066,11 @@ class SOCNotesApp:
         self.save_settings()
         self._clear_contamination_highlights()
         self._log_action('client_selected', self.active_client or 'None')
+        # Apply client colour to the current tab
         if self.active_client:
+            colour = self.clients.get(self.active_client, {}).get("colour", "none") or "none"
+            if colour != "none" and current:
+                self._set_tab_colour(self.notebook.nametowidget(current), colour)
             self.update_status(f"Active client: {self.active_client} — press ⚠ Check to scan")
         else:
             self.update_status("No active client selected")
@@ -4157,6 +4266,33 @@ class SOCNotesApp:
         _field("Hostname Prefixes", "_ct_host_text", "One per line  e.g.  LIDL-WS")
         _field("IP Ranges", "_ct_ip_text", "One per line  e.g.  10.1.0.0/16")
         _field("Custom Keywords", "_ct_kw_text", "One per line  e.g.  LidlRetail")
+
+        # Default template + tab colour
+        meta_frame = ttk.LabelFrame(right, text="Quick Menu Defaults")
+        meta_frame.pack(fill="x", pady=3)
+
+        tmpl_row = ttk.Frame(meta_frame)
+        tmpl_row.pack(fill="x", padx=4, pady=2)
+        ttk.Label(tmpl_row, text="Default template:").pack(side="left")
+        self._ct_tmpl_var = tk.StringVar(value="")
+        self._ct_tmpl_combo = ttk.Combobox(tmpl_row, textvariable=self._ct_tmpl_var,
+                                           state="readonly", width=28)
+        self._ct_tmpl_combo["values"] = ["(none)"] + list(getattr(self, 'templates', {}).keys())
+        self._ct_tmpl_combo.pack(side="left", padx=6)
+        ttk.Label(meta_frame,
+                  text="Used when [0] Skip Template is pressed in Quick Menu",
+                  foreground="grey", font=("Arial", 8)).pack(anchor="w", padx=4, pady=(0, 2))
+
+        colour_row = ttk.Frame(meta_frame)
+        colour_row.pack(fill="x", padx=4, pady=(2, 4))
+        ttk.Label(colour_row, text="Tab colour:").pack(side="left")
+        self._ct_colour_var = tk.StringVar(value="none")
+        for col, emoji in [("none","\u2716"),("red","\U0001f7e5"),("orange","\U0001f7e7"),
+                           ("yellow","\U0001f7e8"),("green","\U0001f7e9"),
+                           ("blue","\U0001f7e6"),("purple","\U0001f7ea")]:
+            ttk.Radiobutton(colour_row, text=emoji, variable=self._ct_colour_var,
+                            value=col).pack(side="left", padx=2)
+
         save_row = tk.Frame(right)
         save_row.pack(fill="x", pady=4)
         ttk.Button(save_row, text="💾 Save Identifiers",
@@ -4183,6 +4319,12 @@ class SOCNotesApp:
             if w:
                 w.delete("1.0", "end")
                 w.insert("1.0", "\n".join(data.get(key, [])))
+        # Populate default template + colour
+        if hasattr(self, '_ct_tmpl_var'):
+            self._ct_tmpl_combo["values"] = ["(none)"] + list(getattr(self, 'templates', {}).keys())
+            self._ct_tmpl_var.set(data.get("default_template", "(none)") or "(none)")
+        if hasattr(self, '_ct_colour_var'):
+            self._ct_colour_var.set(data.get("colour", "none") or "none")
 
     def _client_tab_save_identifiers(self):
         name = self._client_tab_current()
@@ -4192,11 +4334,15 @@ class SOCNotesApp:
         def _lines(attr):
             w = getattr(self, attr, None)
             return [l.strip() for l in w.get("1.0","end-1c").splitlines() if l.strip()] if w else []
+        tmpl  = getattr(self, '_ct_tmpl_var', None)
+        col   = getattr(self, '_ct_colour_var', None)
         self.clients[name] = {
-            "email_domains": _lines("_ct_email_text"),
+            "email_domains":     _lines("_ct_email_text"),
             "hostname_prefixes": _lines("_ct_host_text"),
-            "ip_ranges": _lines("_ct_ip_text"),
-            "keywords": _lines("_ct_kw_text"),
+            "ip_ranges":         _lines("_ct_ip_text"),
+            "keywords":          _lines("_ct_kw_text"),
+            "default_template":  (tmpl.get() if tmpl and tmpl.get() != "(none)" else ""),
+            "colour":            (col.get() if col else "none"),
         }
         self.save_settings()
         self._refresh_client_combo()
@@ -4210,7 +4356,9 @@ class SOCNotesApp:
         if name in self.clients:
             messagebox.showerror("Duplicate", f"Client '{name}' already exists.")
             return
-        self.clients[name] = {"email_domains":[], "hostname_prefixes":[], "ip_ranges":[], "keywords":[]}
+        self.clients[name] = {"email_domains":[], "hostname_prefixes":[],
+                              "ip_ranges":[], "keywords":[],
+                              "default_template":"", "colour":"none"}
         self._client_listbox.insert(tk.END, name)
         self.save_settings()
         self._refresh_client_combo()
@@ -4729,6 +4877,20 @@ class SOCNotesApp:
             return
         frame = self.notebook.nametowidget(current)
         menu = tk.Menu(self.root, tearoff=0)
+
+        # Pin / Unpin
+        if frame in self._pinned_tabs:
+            menu.add_command(label="📌 Unpin Tab", command=lambda: self.toggle_pin_tab(frame))
+        else:
+            menu.add_command(label="📌 Pin Tab",   command=lambda: self.toggle_pin_tab(frame))
+
+        # Reopen last closed
+        if self._closed_tabs:
+            last_title = self._closed_tabs[-1][0]
+            menu.add_command(label=f"↩ Reopen '{last_title[:30]}'",
+                             command=self.reopen_closed_tab)
+
+        menu.add_separator()
         menu.add_command(label="Tab colour:")
         menu.add_separator()
         for colour, label in [("none", "\u2716 No colour"),
@@ -4746,6 +4908,422 @@ class SOCNotesApp:
             pass
         finally:
             menu.grab_release()
+
+    # --------------------- Recently Closed / Pin / Bookmark / Lock / Redaction ---------------------
+
+    def reopen_closed_tab(self):
+        if not self._closed_tabs:
+            self.update_status("No recently closed tabs")
+            return
+        title, content, filepath = self._closed_tabs.pop()
+        self.new_tab(title, content)
+        if filepath:
+            current = self.notebook.select()
+            self.current_file_paths[current] = filepath
+        self.update_status(f"Reopened: {title}")
+
+    def toggle_pin_tab(self, frame=None):
+        current = self.notebook.select()
+        if not current:
+            return
+        frame = frame or self.notebook.nametowidget(current)
+        if frame in self._pinned_tabs:
+            self._pinned_tabs.discard(frame)
+            title = self.notebook.tab(frame, "text")
+            if title.startswith("📌 "):
+                self.notebook.tab(frame, text=title[3:])
+            self.update_status("Tab unpinned")
+        else:
+            self._pinned_tabs.add(frame)
+            title = self.notebook.tab(frame, "text")
+            if not title.startswith("📌 "):
+                self.notebook.tab(frame, text="📌 " + title)
+            self.update_status("Tab pinned — Ctrl+W and ×  will be blocked")
+        self._reposition_close_buttons()
+
+    def jump_to_line(self):
+        current = self.notebook.select()
+        if not current:
+            return
+        frame       = self.notebook.nametowidget(current)
+        text_widget = self.get_text_widget(frame)
+        line_count  = int(text_widget.index("end-1c").split(".")[0])
+
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Jump to Line")
+        dialog.geometry("280x90")
+        dialog.transient(self.root)
+        dialog.grab_set()
+        dialog.resizable(False, False)
+
+        tk.Label(dialog, text=f"Line number  (1 – {line_count}):").pack(pady=(12, 4))
+        entry = tk.Entry(dialog, width=10, justify="center")
+        entry.pack()
+        entry.focus()
+
+        def _go():
+            try:
+                n = max(1, min(int(entry.get()), line_count))
+                text_widget.mark_set(tk.INSERT, f"{n}.0")
+                text_widget.see(f"{n}.0")
+                text_widget.focus_set()
+                dialog.destroy()
+            except ValueError:
+                pass
+
+        entry.bind("<Return>", lambda e: _go())
+        tk.Button(dialog, text="Go", command=_go).pack(pady=6)
+
+    def toggle_bookmark(self):
+        current = self.notebook.select()
+        if not current:
+            return
+        frame       = self.notebook.nametowidget(current)
+        text_widget = self.get_text_widget(frame)
+        line = int(text_widget.index(tk.INSERT).split(".")[0])
+
+        self._bookmarks.setdefault(frame, set())
+        if line in self._bookmarks[frame]:
+            self._bookmarks[frame].discard(line)
+            text_widget.tag_remove("bookmark", f"{line}.0", f"{line+1}.0")
+            self.update_status(f"Bookmark removed (line {line})")
+        else:
+            self._bookmarks[frame].add(line)
+            text_widget.tag_add("bookmark", f"{line}.0", f"{line+1}.0")
+            text_widget.tag_config("bookmark", background="#1a3a1a",
+                                   foreground="#00ff88", font=("Consolas", self.config.FONT_SIZE))
+            self.update_status(f"Bookmark set (line {line})")
+
+    def next_bookmark(self):
+        current = self.notebook.select()
+        if not current:
+            return
+        frame       = self.notebook.nametowidget(current)
+        text_widget = self.get_text_widget(frame)
+        cur_line    = int(text_widget.index(tk.INSERT).split(".")[0])
+        marks       = sorted(self._bookmarks.get(frame, set()))
+        if not marks:
+            self.update_status("No bookmarks in this tab  (F2 to set one)")
+            return
+        nxt = next((m for m in marks if m > cur_line), marks[0])
+        text_widget.mark_set(tk.INSERT, f"{nxt}.0")
+        text_widget.see(f"{nxt}.0")
+        self.update_status(f"Bookmark → line {nxt}")
+
+    def prev_bookmark(self):
+        current = self.notebook.select()
+        if not current:
+            return
+        frame       = self.notebook.nametowidget(current)
+        text_widget = self.get_text_widget(frame)
+        cur_line    = int(text_widget.index(tk.INSERT).split(".")[0])
+        marks       = sorted(self._bookmarks.get(frame, set()), reverse=True)
+        if not marks:
+            self.update_status("No bookmarks in this tab  (F2 to set one)")
+            return
+        prv = next((m for m in marks if m < cur_line), marks[0])
+        text_widget.mark_set(tk.INSERT, f"{prv}.0")
+        text_widget.see(f"{prv}.0")
+        self.update_status(f"Bookmark ← line {prv}")
+
+    def lock_session(self):
+        lock_win = tk.Toplevel(self.root)
+        lock_win.title("ThreatPad — Locked")
+        lock_win.attributes("-fullscreen", True)
+        lock_win.attributes("-topmost", True)
+        lock_win.configure(bg="#0d0d0d")
+        lock_win.protocol("WM_DELETE_WINDOW", lambda: None)
+        lock_win.resizable(False, False)
+
+        tk.Label(lock_win, text="🔒  SESSION LOCKED",
+                 font=("Consolas", 26, "bold"), bg="#0d0d0d", fg="#00bfff").pack(pady=(160, 16))
+        tk.Label(lock_win, text="Enter passphrase to unlock  (default: unlock)",
+                 font=("Consolas", 11), bg="#0d0d0d", fg="#555555").pack()
+
+        entry = tk.Entry(lock_win, show="●", font=("Consolas", 14),
+                         width=24, justify="center", bg="#1a1a1a", fg="white",
+                         insertbackground="white")
+        entry.pack(pady=14)
+        entry.focus()
+
+        msg_lbl = tk.Label(lock_win, text="", font=("Consolas", 11),
+                           bg="#0d0d0d", fg="#ff6b6b")
+        msg_lbl.pack()
+
+        stored = getattr(self, '_lock_password', 'unlock')
+
+        def _try_unlock():
+            if entry.get() == stored:
+                lock_win.destroy()
+                self.update_status("Session unlocked")
+            else:
+                msg_lbl.config(text="Incorrect passphrase")
+                entry.delete(0, "end")
+
+        entry.bind("<Return>", lambda e: _try_unlock())
+        tk.Button(lock_win, text="  Unlock  ", command=_try_unlock,
+                  font=("Consolas", 13, "bold"), bg="#00bfff", fg="#0d0d0d",
+                  activebackground="#0099cc", bd=0, pady=8).pack(pady=10)
+        lock_win.grab_set()
+
+    def toggle_redaction(self):
+        self._redaction_on = not self._redaction_on
+        for frame, text_frame in self.tabs.items():
+            try:
+                tw = text_frame.text if hasattr(text_frame, 'text') else text_frame
+                if self._redaction_on:
+                    bg = tw.cget("background")
+                    tw.tag_add("redacted", "1.0", "end")
+                    tw.tag_config("redacted", foreground=bg, selectforeground=bg)
+                else:
+                    tw.tag_remove("redacted", "1.0", "end")
+            except Exception:
+                pass
+        if self._redaction_on:
+            self.validation_label.config(text="🔴 REDACTED", fg="red")
+            self.update_status("Redaction ON — text hidden from view")
+        else:
+            self.validation_label.config(text="")
+            self.update_status("Redaction OFF")
+
+    # --------------------- Clipboard Auto-Clear ---------------------
+
+    def schedule_clipboard_clear(self):
+        delay = self.config.CLIPBOARD_CLEAR_DELAY
+        if delay <= 0:
+            return
+        if self._clipboard_clear_job:
+            self.root.after_cancel(self._clipboard_clear_job)
+        self._clipboard_clear_job = self.root.after(
+            int(delay * 1000), self._do_clipboard_clear)
+
+    def _do_clipboard_clear(self):
+        try:
+            self.root.clipboard_clear()
+            self.root.clipboard_append("")
+            self.update_status(f"Clipboard auto-cleared after {self.config.CLIPBOARD_CLEAR_DELAY}s")
+        except Exception:
+            pass
+        self._clipboard_clear_job = None
+
+    # --------------------- IOC Live Panel ---------------------
+
+    def toggle_ioc_panel(self):
+        if self._ioc_panel_win and self._ioc_panel_win.winfo_exists():
+            self._ioc_panel_win.destroy()
+            self._ioc_panel_win = None
+            return
+        self._open_ioc_panel()
+
+    def _open_ioc_panel(self):
+        win = tk.Toplevel(self.root)
+        win.title("IOC Panel")
+        win.geometry("460x500")
+        win.attributes("-topmost", True)
+        self._ioc_panel_win = win
+
+        header = tk.Frame(win, bg="#111111")
+        header.pack(fill="x")
+        tk.Label(header, text="Live IOC Panel", font=("Consolas", 10, "bold"),
+                 bg="#111111", fg="#00bfff", pady=6).pack(side="left", padx=10)
+        self._ioc_panel_status = tk.Label(header, text="", font=("Consolas", 9),
+                                          bg="#111111", fg="#888888")
+        self._ioc_panel_status.pack(side="right", padx=10)
+
+        # Scrollable canvas for IOC rows
+        canvas_frame = tk.Frame(win)
+        canvas_frame.pack(fill="both", expand=True)
+        vsb = ttk.Scrollbar(canvas_frame, orient="vertical")
+        vsb.pack(side="right", fill="y")
+        self._ioc_canvas = tk.Canvas(canvas_frame, bg="#0d0d0d",
+                                     yscrollcommand=vsb.set, highlightthickness=0)
+        self._ioc_canvas.pack(side="left", fill="both", expand=True)
+        vsb.config(command=self._ioc_canvas.yview)
+        self._ioc_inner = tk.Frame(self._ioc_canvas, bg="#0d0d0d")
+        self._ioc_canvas_window = self._ioc_canvas.create_window(
+            (0, 0), window=self._ioc_inner, anchor="nw")
+        self._ioc_inner.bind("<Configure>",
+            lambda e: self._ioc_canvas.configure(
+                scrollregion=self._ioc_canvas.bbox("all")))
+
+        footer = tk.Frame(win, bg="#111111")
+        footer.pack(fill="x")
+        tk.Button(footer, text="Refresh", font=("Consolas", 9),
+                  command=self._refresh_ioc_panel,
+                  bg="#333333", fg="white", bd=0, pady=4).pack(side="left", padx=8, pady=4)
+        tk.Button(footer, text="Close", font=("Consolas", 9),
+                  command=lambda: (win.destroy(), setattr(self, '_ioc_panel_win', None)),
+                  bg="#333333", fg="white", bd=0, pady=4).pack(side="right", padx=8, pady=4)
+
+        self._refresh_ioc_panel()
+        # Auto-refresh every 3 seconds while panel is open
+        self._schedule_ioc_refresh()
+        win.protocol("WM_DELETE_WINDOW",
+                     lambda: (win.destroy(), setattr(self, '_ioc_panel_win', None)))
+
+    def _schedule_ioc_refresh(self):
+        if self._ioc_panel_win and self._ioc_panel_win.winfo_exists():
+            self._refresh_ioc_panel()
+            self._ioc_panel_win.after(3000, self._schedule_ioc_refresh)
+
+    def _refresh_ioc_panel(self):
+        if not self._ioc_panel_win or not self._ioc_panel_win.winfo_exists():
+            return
+        for w in self._ioc_inner.winfo_children():
+            w.destroy()
+
+        current = self.notebook.select()
+        if not current:
+            tk.Label(self._ioc_inner, text="No tab open", bg="#0d0d0d",
+                     fg="#555555", font=("Consolas", 10)).pack(pady=20)
+            return
+
+        frame       = self.notebook.nametowidget(current)
+        text_widget = self.get_text_widget(frame)
+        text        = text_widget.get("1.0", "end-1c")
+        tab_title   = self.notebook.tab(current, "text")
+
+        iocs = {}
+        for ioc_type, pattern in self.ioc_patterns.items():
+            matches = list(set(pattern.findall(text)))
+            if matches:
+                iocs[ioc_type] = sorted(matches)
+
+        total = sum(len(v) for v in iocs.values())
+        self._ioc_panel_status.config(text=f"{total} IOC{'s' if total!=1 else ''}  •  {tab_title[:30]}")
+
+        TYPE_COLOURS = {
+            "ipv4":"#ff6b6b","ipv6":"#ff9999","email":"#ffd700",
+            "url":"#ff8c00","domain":"#87ceeb","hash_md5":"#98fb98",
+            "hash_sha1":"#90ee90","hash_sha256":"#00fa9a",
+        }
+        if not iocs:
+            tk.Label(self._ioc_inner, text="No IOCs detected",
+                     bg="#0d0d0d", fg="#555555", font=("Consolas", 10)).pack(pady=20)
+            return
+
+        for ioc_type, values in iocs.items():
+            hdr = tk.Frame(self._ioc_inner, bg="#1a1a1a")
+            hdr.pack(fill="x", pady=(6, 2), padx=4)
+            tk.Label(hdr, text=f"  {ioc_type.upper().replace('_',' ')}  ({len(values)})",
+                     bg="#1a1a1a", fg="#888888", font=("Consolas", 9, "bold"),
+                     anchor="w").pack(fill="x")
+
+            for value in values:
+                row = tk.Frame(self._ioc_inner, bg="#0d0d0d", cursor="hand2")
+                row.pack(fill="x", padx=8, pady=1)
+                colour = TYPE_COLOURS.get(ioc_type, "#e0e0e0")
+                lbl = tk.Label(row, text=value, bg="#0d0d0d", fg=colour,
+                               font=("Consolas", 9), anchor="w", padx=6)
+                lbl.pack(side="left", fill="x", expand=True)
+                # Copy button
+                def _copy(v=value):
+                    self.root.clipboard_clear()
+                    self.root.clipboard_append(v)
+                    self.update_status(f"Copied: {v}")
+                cp_btn = tk.Label(row, text="⎘", bg="#0d0d0d", fg="#555555",
+                                  font=("Consolas", 9), cursor="hand2")
+                cp_btn.pack(side="right", padx=4)
+                cp_btn.bind("<Button-1>", lambda e, v=value: _copy(v))
+
+                # Click row → jump to IOC in text
+                def _jump(e, v=value, tw=text_widget):
+                    try:
+                        pos = tw.search(v, "1.0", stopindex="end", nocase=False)
+                        if pos:
+                            tw.mark_set(tk.INSERT, pos)
+                            tw.see(pos)
+                            tw.focus_set()
+                    except Exception:
+                        pass
+                for widget in (row, lbl):
+                    widget.bind("<Button-1>", _jump)
+                    widget.bind("<Enter>", lambda e, r=row: r.config(bg="#1a2a1a"))
+                    widget.bind("<Leave>", lambda e, r=row: r.config(bg="#0d0d0d"))
+
+    # --------------------- Export Reports ---------------------
+
+    def export_html_report(self):
+        import html as _html
+        current = self.notebook.select()
+        if not current:
+            return
+        frame       = self.notebook.nametowidget(current)
+        text_widget = self.get_text_widget(frame)
+        content     = text_widget.get("1.0", "end-1c")
+        title       = self.notebook.tab(current, "text")
+        for pfx in ("📌 ","\U0001f7e5 ","\U0001f7e7 ","\U0001f7e8 ",
+                    "\U0001f7e9 ","\U0001f7e6 ","\U0001f7ea "):
+            title = title.replace(pfx, "")
+        title = title.strip()
+
+        from datetime import datetime as _dt
+        html_doc = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>{_html.escape(title)}</title>
+<style>
+  body {{font-family: Consolas, monospace; background:#0d1117; color:#e0e0e0;
+         padding:32px; max-width:960px; margin:auto;}}
+  h1   {{color:#00bfff; border-bottom:1px solid #333; padding-bottom:8px;}}
+  .meta{{color:#888; font-size:0.85em; margin-bottom:20px;}}
+  pre  {{white-space:pre-wrap; word-wrap:break-word; line-height:1.5;}}
+  @media print {{body{{background:#fff;color:#000;}} h1{{color:#000;}}}}
+</style>
+</head>
+<body>
+<h1>{_html.escape(title)}</h1>
+<p class="meta">Client: {_html.escape(self.active_client or '—')} &nbsp;•&nbsp;
+Exported: {_dt.now().strftime('%Y-%m-%d %H:%M')}</p>
+<pre>{_html.escape(content)}</pre>
+</body>
+</html>"""
+
+        safe_name = re.sub(r'[^A-Za-z0-9 _-]', '_', title)
+        filepath = filedialog.asksaveasfilename(
+            defaultextension=".html",
+            filetypes=[("HTML Files", "*.html"), ("All Files", "*.*")],
+            initialfile=safe_name + ".html")
+        if filepath:
+            with open(filepath, "w", encoding="utf-8") as f:
+                f.write(html_doc)
+            self.update_status(f"HTML report exported → {filepath}")
+
+    def export_json_report(self):
+        current = self.notebook.select()
+        if not current:
+            return
+        frame       = self.notebook.nametowidget(current)
+        text_widget = self.get_text_widget(frame)
+        content     = text_widget.get("1.0", "end-1c")
+        title       = self.notebook.tab(current, "text")
+
+        from datetime import datetime as _dt
+        iocs = {}
+        for ioc_type, pattern in self.ioc_patterns.items():
+            matches = list(set(pattern.findall(content)))
+            if matches:
+                iocs[ioc_type] = sorted(matches)
+
+        export = {
+            "incident_title": title,
+            "client":         self.active_client or "",
+            "exported_at":    _dt.now().isoformat(),
+            "filepath":       self.current_file_paths.get(current) or "",
+            "content":        content,
+            "iocs":           iocs,
+        }
+
+        safe_name = re.sub(r'[^A-Za-z0-9 _-]', '_', title)
+        filepath = filedialog.asksaveasfilename(
+            defaultextension=".json",
+            filetypes=[("JSON Files", "*.json"), ("All Files", "*.*")],
+            initialfile=safe_name + ".json")
+        if filepath:
+            with open(filepath, "w", encoding="utf-8") as f:
+                json.dump(export, f, indent=2, ensure_ascii=False)
+            self.update_status(f"JSON report exported → {filepath}")
 
     # --------------------- Snippet Management ---------------------
     def load_snippets(self):
