@@ -5,12 +5,17 @@ Tkinter rebuild — black/orange terminal aesthetic
 
 import tkinter as tk
 from tkinter import ttk, messagebox, scrolledtext
-import json, csv, os, sqlite3, threading
+import json, csv, os, sys, sqlite3, threading
 from datetime import datetime, timedelta
 from pathlib import Path
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
-BASE       = Path(__file__).parent
+# When frozen by PyInstaller the exe lives one level above the bundle temp dir,
+# so we store all data next to the exe rather than inside the bundle.
+if getattr(sys, "frozen", False):
+    BASE = Path(sys.executable).parent
+else:
+    BASE = Path(__file__).parent
 MEMORY_DIR = BASE / "memory"
 DATA_DIR   = BASE / "data"
 LOGS_DIR   = BASE / "logs"
