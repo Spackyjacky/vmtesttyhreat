@@ -699,15 +699,15 @@ class TaskScreen(tk.Frame):
         for c in cols:
             self.tree.heading(c, text=c)
         self.tree.bind("<Double-1>", lambda e: self._edit())
-        self._refresh()
 
-        # Log tail
+        # Log tail — must be created before calling _refresh()
         section_title(self, "TASK LOG")
         self.log_view = scrolledtext.ScrolledText(
             self, bg=BG2, fg=ORANGE_DIM, font=FONT_MONO_S,
             relief="flat", bd=0, height=6, wrap="word", state="normal")
         self.log_view.pack(fill="x", padx=10, pady=(0,8))
-        self._refresh_log()
+
+        self._refresh()
 
     def _get_tasks(self):
         tasks = load_tasks()
@@ -724,7 +724,7 @@ class TaskScreen(tk.Frame):
         for t in self._get_tasks():
             p    = t.get("priority","low")
             stat = t.get("status","open")
-            fg   = GREEN if stat == "resolved" else PRIORITY_COLOUR.get(p, ORANGE)
+            tag  = "resolved_tag" if stat == "resolved" else p
             self.tree.insert("", "end", iid=str(t["id"]), values=(
                 t.get("id",""),
                 p.upper(),
@@ -732,7 +732,7 @@ class TaskScreen(tk.Frame):
                 t.get("description","")[:40],
                 stat,
                 t.get("created","")[:10],
-            ), tags=(p,))
+            ), tags=(tag,))
         for p in PRIORITIES:
             self.tree.tag_configure(p, foreground=PRIORITY_COLOUR[p])
         self.tree.tag_configure("resolved_tag", foreground=GREEN)
