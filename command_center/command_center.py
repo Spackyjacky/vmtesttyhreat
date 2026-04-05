@@ -25,6 +25,7 @@ DECISIONS_CSV = DATA_DIR / "decisions.csv"
 TASKS_JSON    = DATA_DIR / "tasks.json"
 TASKS_LOG     = LOGS_DIR / "tasks.log"
 MEMORY_DB     = DATA_DIR / "memory.db"
+PROGRAMS_JSON = DATA_DIR / "programs.json"
 
 for d in [MEMORY_DIR, DATA_DIR, LOGS_DIR, DAILY_DIR]:
     d.mkdir(parents=True, exist_ok=True)
@@ -70,6 +71,147 @@ def load_tasks():
 
 def save_tasks(tasks):
     TASKS_JSON.write_text(json.dumps(tasks, indent=2))
+
+def load_programs():
+    if not PROGRAMS_JSON.exists():
+        return []
+    try:
+        return json.loads(PROGRAMS_JSON.read_text()) or []
+    except Exception:
+        return []
+
+def save_programs(programs):
+    PROGRAMS_JSON.write_text(json.dumps(programs, indent=2))
+
+def get_program_template(name: str, prog_type: str = "certification") -> dict:
+    sc200_aliases = {"sc-200", "microsoft sc-200", "sc200"}
+    existing = load_programs()
+    new_id = max((p.get("id", 0) for p in existing), default=0) + 1
+    skeleton = {
+        "id": new_id, "name": name, "type": prog_type,
+        "description": "", "start_date": today_str(), "target_date": "",
+        "status": "active", "created": today_str(), "modules": []
+    }
+    if name.strip().lower() in sc200_aliases:
+        skeleton["name"] = "Microsoft SC-200"
+        skeleton["description"] = (
+            "Microsoft Security Operations Analyst — prepares for the SC-200 exam. "
+            "Covers Microsoft Defender XDR, Defender for Cloud, and Microsoft Sentinel."
+        )
+        skeleton["modules"] = _sc200_modules()
+    return skeleton
+
+def _sc200_modules() -> list:
+    return [
+        # ── LP1: Microsoft Defender XDR ───────────────────────────────────────
+        {"id":1,"title":"Introduction to Microsoft 365 Threat Protection",
+         "description":"Overview of the Microsoft Defender XDR suite. Learn how Defender for Endpoint, Defender for Office 365, Defender for Identity, and Defender for Cloud Apps integrate into a unified XDR platform. Understand the security operations model and the SOC analyst role.",
+         "estimated_hours":1.5,"status":"not_started","completed_date":None,
+         "resources":["https://learn.microsoft.com/en-us/training/modules/introduction-microsoft-365-threat-protection/"],"notes":""},
+        {"id":2,"title":"Mitigate Incidents Using Microsoft Defender XDR",
+         "description":"Deep dive into the Microsoft Defender portal. Triage and investigate incidents, manage alerts, use the attack story graph, and perform automated investigation and response (AIR). Practice the incident lifecycle from detection through remediation.",
+         "estimated_hours":2.0,"status":"not_started","completed_date":None,
+         "resources":["https://learn.microsoft.com/en-us/training/modules/mitigate-incidents-microsoft-365-defender/"],"notes":""},
+        {"id":3,"title":"Protect Identities with Microsoft Entra ID Protection",
+         "description":"Configure and interpret Microsoft Entra ID Protection risk policies. Understand sign-in risk and user risk, review risky users and sign-ins, remediate compromised accounts, and integrate with Conditional Access.",
+         "estimated_hours":1.5,"status":"not_started","completed_date":None,
+         "resources":["https://learn.microsoft.com/en-us/training/modules/protect-identities-with-aad-idp/"],"notes":""},
+        {"id":4,"title":"Remediate Risks with Microsoft Defender for Office 365",
+         "description":"Investigate and respond to email-based threats. Use Threat Explorer, SafeLinks, Safe Attachments, and anti-phishing policies. Understand how to hunt for compromised users and review campaign views.",
+         "estimated_hours":2.0,"status":"not_started","completed_date":None,
+         "resources":["https://learn.microsoft.com/en-us/training/modules/m365-threat-remediate/"],"notes":""},
+        {"id":5,"title":"Safeguard Your Environment with Microsoft Defender for Identity",
+         "description":"Deploy Defender for Identity sensors. Detect lateral movement, reconnaissance, and domain-dominance attacks. Investigate alerts and integrate with Microsoft Defender XDR for correlated incidents.",
+         "estimated_hours":1.5,"status":"not_started","completed_date":None,
+         "resources":["https://learn.microsoft.com/en-us/training/modules/m365-threat-safeguard/"],"notes":""},
+        {"id":6,"title":"Secure Cloud Apps with Microsoft Defender for Cloud Apps",
+         "description":"Connect apps via API and deploy the Cloud App Security proxy. Interpret the Cloud Discovery dashboard, configure session and access policies, detect shadow IT, and investigate alerts for data exfiltration or anomalous cloud behaviour.",
+         "estimated_hours":2.0,"status":"not_started","completed_date":None,
+         "resources":["https://learn.microsoft.com/en-us/training/modules/microsoft-cloud-app-security/"],"notes":""},
+        {"id":7,"title":"Respond to Data Loss Prevention Alerts Using Microsoft 365",
+         "description":"Understand how DLP policies generate alerts in Defender XDR. Triage DLP incidents, review matched sensitive information types, and take remediation actions. Covers the intersection of compliance and security operations.",
+         "estimated_hours":1.5,"status":"not_started","completed_date":None,
+         "resources":["https://learn.microsoft.com/en-us/training/modules/respond-to-data-loss-prevention-alerts/"],"notes":""},
+        {"id":8,"title":"Manage Insider Risk in Microsoft Purview",
+         "description":"Configure insider risk management policies in Microsoft Purview. Review risk indicators, investigate cases, and escalate to eDiscovery. Understand privacy controls and role separation in insider risk workflows.",
+         "estimated_hours":2.0,"status":"not_started","completed_date":None,
+         "resources":["https://learn.microsoft.com/en-us/training/modules/m365-compliance-insider-manage-insider-risk/"],"notes":""},
+        # ── LP2: Microsoft Defender for Cloud ─────────────────────────────────
+        {"id":9,"title":"Introduction to Microsoft Defender for Cloud",
+         "description":"Overview of cloud security posture management (CSPM) and cloud workload protection (CWP). Understand Defender plans, Secure Score, regulatory compliance dashboards, and how Defender for Cloud spans Azure, AWS, and GCP.",
+         "estimated_hours":1.5,"status":"not_started","completed_date":None,
+         "resources":["https://learn.microsoft.com/en-us/training/modules/introduction-microsoft-defender-cloud/"],"notes":""},
+        {"id":10,"title":"Cloud Security Posture Management with Defender for Cloud",
+         "description":"Deep dive into Secure Score recommendations, hardening guidance, and governance rules. Understand attack path analysis, cloud security explorer, and how to prioritise remediation across hybrid and multi-cloud estates.",
+         "estimated_hours":2.0,"status":"not_started","completed_date":None,
+         "resources":["https://learn.microsoft.com/en-us/training/modules/defender-for-cloud-security-posture-management/"],"notes":""},
+        {"id":11,"title":"Connect Azure Assets to Microsoft Defender for Cloud",
+         "description":"Enable Defender plans for Azure subscriptions. Configure auto-provisioning of the Log Analytics agent and Azure Monitor Agent. Onboard Azure Arc-enabled servers and understand data collection rules.",
+         "estimated_hours":2.0,"status":"not_started","completed_date":None,
+         "resources":["https://learn.microsoft.com/en-us/training/modules/connect-azure-assets-microsoft-defender-cloud/"],"notes":""},
+        {"id":12,"title":"Connect Non-Azure Resources to Microsoft Defender for Cloud",
+         "description":"Onboard AWS accounts using the native connector and GCP projects via service principal. Extend coverage to on-premises machines via Azure Arc. Understand cross-cloud alert mapping and shared-responsibility posture.",
+         "estimated_hours":2.0,"status":"not_started","completed_date":None,
+         "resources":["https://learn.microsoft.com/en-us/training/modules/connect-non-azure-machines-to-microsoft-defender-cloud/"],"notes":""},
+        {"id":13,"title":"Remediate Security Alerts Using Microsoft Defender for Cloud",
+         "description":"Triage security alerts, apply manual and automatic remediation. Use workflow automation with Logic Apps, suppress false positives, export alerts to Sentinel, and track remediation through security recommendations.",
+         "estimated_hours":2.5,"status":"not_started","completed_date":None,
+         "resources":["https://learn.microsoft.com/en-us/training/modules/remediate-azure-defender-security-alerts/"],"notes":""},
+        {"id":14,"title":"Threat Intelligence in Microsoft Defender for Cloud",
+         "description":"Leverage the integrated threat intelligence map, review active alerts by geography, and use built-in threat intelligence reports. Understand how Defender for Cloud enriches alerts with Microsoft TI feeds.",
+         "estimated_hours":1.5,"status":"not_started","completed_date":None,
+         "resources":["https://learn.microsoft.com/en-us/training/modules/threat-intelligence-azure-security-center/"],"notes":""},
+        # ── LP3: Microsoft Sentinel ────────────────────────────────────────────
+        {"id":15,"title":"Introduction to Microsoft Sentinel",
+         "description":"Architecture overview: workspaces, data connectors, analytics rules, incidents, and SOAR playbooks. Understand the Log Analytics foundation and how Sentinel differs from a traditional SIEM. Plan workspace design and cost considerations.",
+         "estimated_hours":1.5,"status":"not_started","completed_date":None,
+         "resources":["https://learn.microsoft.com/en-us/training/modules/intro-to-azure-sentinel/"],"notes":""},
+        {"id":16,"title":"Create and Manage Microsoft Sentinel Workspaces",
+         "description":"Deploy Sentinel on a Log Analytics workspace. Configure workspace settings, manage RBAC roles (Sentinel Reader, Responder, Contributor), set data retention policies, and implement multi-workspace and multi-tenant designs.",
+         "estimated_hours":2.0,"status":"not_started","completed_date":None,
+         "resources":["https://learn.microsoft.com/en-us/training/modules/create-manage-azure-sentinel-workspaces/"],"notes":""},
+        {"id":17,"title":"Query Logs in Microsoft Sentinel Using KQL",
+         "description":"Write KQL queries against SecurityEvent, SigninLogs, CommonSecurityLog, and other Sentinel tables. Master operators: where, project, summarize, join, union, extend, parse, render. Build queries for threat hunting and detection rule logic.",
+         "estimated_hours":3.0,"status":"not_started","completed_date":None,
+         "resources":["https://learn.microsoft.com/en-us/training/modules/query-logs-azure-sentinel/","https://aka.ms/lademo"],"notes":""},
+        {"id":18,"title":"Use Watchlists in Microsoft Sentinel",
+         "description":"Create and manage watchlists from CSV data. Reference watchlists in KQL analytics rules and hunting queries using _GetWatchlist(). Common use cases: VIP user lists, high-value asset lists, IP allowlists.",
+         "estimated_hours":1.0,"status":"not_started","completed_date":None,
+         "resources":["https://learn.microsoft.com/en-us/training/modules/use-watchlists-azure-sentinel/"],"notes":""},
+        {"id":19,"title":"Utilize Threat Intelligence in Microsoft Sentinel",
+         "description":"Ingest threat indicators via TAXII/STIX and the Microsoft TI Platforms connector. Use the ThreatIntelligenceIndicator table in KQL. Configure threat indicator analytics rules and review the Threat Intelligence workbook.",
+         "estimated_hours":1.5,"status":"not_started","completed_date":None,
+         "resources":["https://learn.microsoft.com/en-us/training/modules/utilize-threat-intelligence-azure-sentinel/"],"notes":""},
+        {"id":20,"title":"Detect Threats with Microsoft Sentinel Analytics Rules",
+         "description":"Create Scheduled, Near Real-Time (NRT), and Fusion analytics rules. Configure entity mapping, alert grouping, and suppression. Manage rule templates from Content Hub, tune thresholds, and review the MITRE ATT&CK coverage matrix.",
+         "estimated_hours":2.5,"status":"not_started","completed_date":None,
+         "resources":["https://learn.microsoft.com/en-us/training/modules/threat-detection-with-azure-sentinel-rules/"],"notes":""},
+        {"id":21,"title":"Automate Incident Response with Microsoft Sentinel SOAR",
+         "description":"Build automation rules and Logic Apps playbooks triggered on incident creation or update. Automate triage actions: assign owner, change status, add tags, run enrichment. Review the Microsoft Sentinel playbook gallery.",
+         "estimated_hours":2.0,"status":"not_started","completed_date":None,
+         "resources":["https://learn.microsoft.com/en-us/training/modules/security-orchestration-automation-response/"],"notes":""},
+        {"id":22,"title":"Investigate and Manage Microsoft Sentinel Incidents",
+         "description":"Work through the full incident lifecycle in Sentinel. Use the investigation graph, entity pages, timeline, and bookmarks. Apply triage, escalation, and closure workflows. Understand incident metrics and SLA tracking via workbooks.",
+         "estimated_hours":2.5,"status":"not_started","completed_date":None,
+         "resources":["https://learn.microsoft.com/en-us/training/modules/incident-management-sentinel/"],"notes":""},
+        {"id":23,"title":"Threat Hunting with Microsoft Sentinel",
+         "description":"Create and run hunting queries, promote findings to incidents or bookmarks. Use Livestream for real-time monitoring. Build hunting hypotheses from MITRE ATT&CK techniques, leverage community GitHub queries, and conduct hypothesis-driven hunts.",
+         "estimated_hours":2.5,"status":"not_started","completed_date":None,
+         "resources":["https://learn.microsoft.com/en-us/training/modules/hunt-threats-sentinel/","https://github.com/Azure/Azure-Sentinel/tree/master/Hunting%20Queries"],"notes":""},
+        {"id":24,"title":"Use Notebooks for Advanced Threat Hunting in Sentinel",
+         "description":"Launch Jupyter notebooks from Sentinel, use msticpy for data enrichment and threat intelligence lookups. Conduct advanced investigation workflows combining KQL data with Python analytics: IP geo-lookup, ML clustering, process tree analysis.",
+         "estimated_hours":2.0,"status":"not_started","completed_date":None,
+         "resources":["https://learn.microsoft.com/en-us/training/modules/hunt-threats-sentinel-notebooks/","https://github.com/microsoft/msticpy"],"notes":""},
+        # ── Practice & Exam Prep ──────────────────────────────────────────────
+        {"id":25,"title":"SC-200 Practice Labs — Hands-On Simulation",
+         "description":"Complete the official Microsoft Learn interactive labs and MeasureUp SC-200 practice labs. Focus on Sentinel analytics rule creation, Defender XDR incident triage, and Defender for Cloud remediation. Document any knowledge gaps identified.",
+         "estimated_hours":6.0,"status":"not_started","completed_date":None,
+         "resources":["https://learn.microsoft.com/en-us/credentials/certifications/security-operations-analyst/","https://www.measureup.com/microsoft-sc-200-practice-test.html","https://github.com/MicrosoftLearning/SC-200T00A-Microsoft-Security-Operations-Analyst"],"notes":""},
+        {"id":26,"title":"SC-200 Mock Exam and Final Review",
+         "description":"Take two full MeasureUp or Whizlabs mock exams under timed conditions. Review all incorrect answers, revisit weak areas (KQL queries, Sentinel analytics tuning, Defender for Cloud plan mapping). Schedule the real exam when consistently scoring 80%+.",
+         "estimated_hours":4.0,"status":"not_started","completed_date":None,
+         "resources":["https://learn.microsoft.com/en-us/credentials/certifications/resources/study-guides/sc-200","https://www.whizlabs.com/microsoft-azure-certification-sc-200/"],"notes":""},
+    ]
 
 def log_task(msg):
     with open(TASKS_LOG, "a") as f:
@@ -589,6 +731,58 @@ class DecisionScreen(tk.Frame):
         self.app.status("Decision deleted.")
 
 
+# ── New Program Modal ─────────────────────────────────────────────────────────
+class NewProgramModal(tk.Toplevel):
+    def __init__(self, parent, app, on_save):
+        super().__init__(parent)
+        self.app     = app
+        self.on_save = on_save
+        self.title("New Program")
+        self.configure(bg=PANEL)
+        self.geometry("460x240")
+        self.resizable(False, False)
+        self.grab_set()
+        self._build()
+
+    def _build(self):
+        tk.Label(self, text="◆ NEW PROGRAM", bg=PANEL, fg=ORANGE,
+                 font=FONT_BOLD_L).pack(pady=(12,4), padx=16, anchor="w")
+        tk.Frame(self, bg=ORANGE3, height=1).pack(fill="x", padx=16)
+
+        form = tk.Frame(self, bg=PANEL)
+        form.pack(fill="x", padx=20, pady=10)
+        form.columnconfigure(1, weight=1)
+
+        tk.Label(form, text="Name:", bg=PANEL, fg=ORANGE_DIM,
+                 font=FONT_MONO_S, width=10, anchor="e").grid(row=0, column=0, pady=6, sticky="e")
+        self.name_var = tk.StringVar()
+        styled_entry(form, textvariable=self.name_var, width=36).grid(row=0, column=1, padx=8, sticky="ew")
+
+        tk.Label(form, text="Type:", bg=PANEL, fg=ORANGE_DIM,
+                 font=FONT_MONO_S, width=10, anchor="e").grid(row=1, column=0, pady=6, sticky="e")
+        self.type_var = tk.StringVar(value="certification")
+        type_cb = ttk.Combobox(form, textvariable=self.type_var, state="readonly", width=18,
+                               values=["certification","course","learning_path","book"], font=FONT_MONO_S)
+        type_cb.grid(row=1, column=1, padx=8, sticky="w")
+
+        tk.Label(self, text="  Tip: name it 'SC-200' for auto-populated curriculum",
+                 bg=PANEL, fg=ORANGE_DIM, font=("Consolas", 8)).pack(anchor="w", padx=20)
+
+        btn_row = tk.Frame(self, bg=PANEL)
+        btn_row.pack(pady=12)
+        styled_button(btn_row, "Create", self._create, width=12,
+                      bg=ORANGE3, colour=BG).pack(side="left", padx=8)
+        styled_button(btn_row, "Cancel", self.destroy, width=12).pack(side="left", padx=8)
+
+    def _create(self):
+        name = self.name_var.get().strip()
+        if not name:
+            messagebox.showwarning("Required", "Program name is required.", parent=self)
+            return
+        self.on_save(name, self.type_var.get())
+        self.destroy()
+
+
 # ── Task Add/Edit Modal ────────────────────────────────────────────────────────
 class TaskModal(tk.Toplevel):
     def __init__(self, parent, app, task=None, on_save=None):
@@ -980,6 +1174,382 @@ class SearchScreen(tk.Frame):
         self.grep_view.config(state="disabled")
 
 
+# ── Courses Screen ────────────────────────────────────────────────────────────
+TYPE_DISPLAY = {"certification":"CERT","course":"COURSE","learning_path":"PATH","book":"BOOK"}
+
+class CoursesScreen(tk.Frame):
+    def __init__(self, parent, app):
+        super().__init__(parent, bg=PANEL)
+        self.app = app
+        self._build()
+
+    def _build(self):
+        section_title(self, "PROGRAMS & COURSES")
+
+        bar = tk.Frame(self, bg=PANEL)
+        bar.pack(fill="x", padx=10, pady=4)
+        styled_button(bar, "+ New Program", self._new_program, width=16,
+                      bg=ORANGE3, colour=BG).pack(side="left", padx=4)
+        styled_button(bar, "Open",    self._open_program,  width=10).pack(side="left", padx=4)
+        styled_button(bar, "Delete",  self._delete_program, width=10).pack(side="left", padx=4)
+        styled_button(bar, "Refresh", self._refresh,        width=10).pack(side="right", padx=4)
+
+        cols = ("Name","Type","Progress","Start","Target","Status")
+        self.tree = make_treeview(self, cols, heights=14)
+        self.tree.column("Name",     width=220, stretch=True)
+        self.tree.column("Type",     width=70,  stretch=False)
+        self.tree.column("Progress", width=70,  stretch=False)
+        self.tree.column("Start",    width=90,  stretch=False)
+        self.tree.column("Target",   width=90,  stretch=False)
+        self.tree.column("Status",   width=80,  stretch=False)
+        for c in cols:
+            self.tree.heading(c, text=c)
+        self.tree.bind("<Double-1>", lambda e: self._open_program())
+        self._refresh()
+
+        self.stats_label = tk.Label(self, text="", bg=PANEL, fg=ORANGE_DIM, font=FONT_MONO_S)
+        self.stats_label.pack(padx=10, pady=4, anchor="w")
+
+    def _compute_progress(self, program):
+        mods = program.get("modules", [])
+        if not mods:
+            return 0
+        done = sum(1 for m in mods if m.get("status") == "complete")
+        return int(done / len(mods) * 100)
+
+    def _refresh(self):
+        for row in self.tree.get_children():
+            self.tree.delete(row)
+        programs = load_programs()
+        for p in programs:
+            pct    = self._compute_progress(p)
+            status = p.get("status", "active")
+            ptype  = TYPE_DISPLAY.get(p.get("type",""), p.get("type","").upper())
+            tag    = status
+            self.tree.insert("", "end", iid=str(p["id"]), values=(
+                p.get("name",""),
+                ptype,
+                f"{pct}%",
+                p.get("start_date","")[:10],
+                p.get("target_date","")[:10] if p.get("target_date") else "—",
+                status.upper(),
+            ), tags=(tag,))
+        self.tree.tag_configure("active",    foreground=ORANGE)
+        self.tree.tag_configure("completed", foreground=GREEN)
+        self.tree.tag_configure("paused",    foreground=GREY)
+        self.tree.tag_configure("abandoned", foreground=RED)
+        total     = len(programs)
+        active    = sum(1 for p in programs if p.get("status") == "active")
+        completed = sum(1 for p in programs if p.get("status") == "completed")
+        self.stats_label.config(
+            text=f"  Total: {total}   Active: {active}   Completed: {completed}")
+
+    def _selected_id(self):
+        sel = self.tree.selection()
+        if not sel:
+            messagebox.showinfo("Select", "Select a program first.", parent=self)
+            return None
+        return int(sel[0])
+
+    def _new_program(self):
+        def on_save(name, ptype):
+            prog = get_program_template(name, ptype)
+            programs = load_programs()
+            programs.append(prog)
+            save_programs(programs)
+            self._refresh()
+            self.app.status(f"Program '{prog['name']}' created with {len(prog['modules'])} modules.")
+        NewProgramModal(self, self.app, on_save)
+
+    def _open_program(self):
+        pid = self._selected_id()
+        if pid is None:
+            return
+        self.app.show_program(pid)
+
+    def _delete_program(self):
+        pid = self._selected_id()
+        if pid is None:
+            return
+        programs = load_programs()
+        prog = next((p for p in programs if p["id"] == pid), None)
+        if not prog:
+            return
+        if not messagebox.askyesno("Confirm", f"Delete '{prog['name']}'?", parent=self):
+            return
+        save_programs([p for p in programs if p["id"] != pid])
+        self._refresh()
+        self.app.status(f"Program '{prog['name']}' deleted.")
+
+
+# ── Program Detail Screen ──────────────────────────────────────────────────────
+class ProgramDetailScreen(tk.Frame):
+    def __init__(self, parent, app, program_id: int):
+        super().__init__(parent, bg=PANEL)
+        self.app               = app
+        self.program_id        = program_id
+        self._current_module_id = None
+        self.program           = None
+        self._build()
+
+    def _load_program(self):
+        programs = load_programs()
+        self.program = next((p for p in programs if p["id"] == self.program_id), None)
+
+    def _build(self):
+        self._load_program()
+        if not self.program:
+            tk.Label(self, text="Program not found.", bg=PANEL, fg=RED,
+                     font=FONT_BOLD).pack(pady=20)
+            styled_button(self, "← Back", self._back, width=10).pack()
+            return
+
+        p = self.program
+
+        # ── Header ──
+        hdr = tk.Frame(self, bg=BG3, highlightbackground=ORANGE3, highlightthickness=1)
+        hdr.pack(fill="x", padx=10, pady=(8,4))
+
+        left_hdr = tk.Frame(hdr, bg=BG3)
+        left_hdr.pack(side="left", padx=8, pady=6)
+        styled_button(left_hdr, "← Back", self._back, width=8).pack(side="left", padx=(0,10))
+        tk.Label(left_hdr, text=p.get("name",""), bg=BG3, fg=ORANGE,
+                 font=FONT_BOLD_L).pack(side="left")
+        ptype = TYPE_DISPLAY.get(p.get("type",""), p.get("type","").upper())
+        tk.Label(left_hdr, text=f"  [{ptype}]", bg=BG3, fg=ORANGE_DIM,
+                 font=FONT_MONO_S).pack(side="left")
+
+        right_hdr = tk.Frame(hdr, bg=BG3)
+        right_hdr.pack(side="right", padx=8, pady=6)
+        tk.Label(right_hdr, text="Start:", bg=BG3, fg=ORANGE_DIM,
+                 font=FONT_MONO_S).pack(side="left")
+        self.start_var = tk.StringVar(value=p.get("start_date",""))
+        styled_entry(right_hdr, textvariable=self.start_var, width=11).pack(side="left", padx=4)
+        tk.Label(right_hdr, text="Target:", bg=BG3, fg=ORANGE_DIM,
+                 font=FONT_MONO_S).pack(side="left", padx=(6,0))
+        self.target_var = tk.StringVar(value=p.get("target_date",""))
+        styled_entry(right_hdr, textvariable=self.target_var, width=11).pack(side="left", padx=4)
+        styled_button(right_hdr, "Save Dates", self._save_dates, width=11,
+                      bg=ORANGE3, colour=BG).pack(side="left", padx=6)
+
+        # ── Progress bar ──
+        prog_frame = tk.Frame(self, bg=BG3, highlightbackground=ORANGE3, highlightthickness=1)
+        prog_frame.pack(fill="x", padx=10, pady=(0,4))
+        self.prog_canvas = tk.Canvas(prog_frame, bg=BG3, height=30, highlightthickness=0)
+        self.prog_canvas.pack(fill="x", padx=10, pady=6)
+        self.prog_canvas.bind("<Configure>", lambda e: self._draw_progress())
+
+        # ── Two-pane ──
+        panes = tk.Frame(self, bg=PANEL)
+        panes.pack(fill="both", expand=True, padx=10, pady=4)
+        panes.columnconfigure(0, weight=1)
+        panes.columnconfigure(1, weight=2)
+        panes.rowconfigure(0, weight=1)
+
+        # Left: module list
+        left = tk.Frame(panes, bg=BG3, highlightbackground=ORANGE3, highlightthickness=1)
+        left.grid(row=0, column=0, sticky="nsew", padx=(0,4))
+        tk.Label(left, text="MODULES", bg=BG3, fg=ORANGE, font=FONT_BOLD).pack(pady=(6,2))
+        tk.Frame(left, bg=ORANGE3, height=1).pack(fill="x", padx=6)
+
+        mod_cols = ("#","Title","Hrs","Status")
+        self.mod_tree = make_treeview(left, mod_cols, heights=16)
+        self.mod_tree.column("#",      width=28,  stretch=False)
+        self.mod_tree.column("Title",  width=160, stretch=True)
+        self.mod_tree.column("Hrs",    width=36,  stretch=False)
+        self.mod_tree.column("Status", width=50,  stretch=False)
+        for c in mod_cols:
+            self.mod_tree.heading(c, text=c)
+        self.mod_tree.bind("<<TreeviewSelect>>", self._on_module_select)
+
+        # Right: detail panel
+        right = tk.Frame(panes, bg=BG3, highlightbackground=ORANGE3, highlightthickness=1)
+        right.grid(row=0, column=1, sticky="nsew")
+
+        self.detail_title = tk.Label(right, text="Select a module", bg=BG3, fg=ORANGE,
+                                      font=FONT_BOLD_L, wraplength=380, justify="left", anchor="w")
+        self.detail_title.pack(fill="x", padx=10, pady=(8,4))
+        tk.Frame(right, bg=ORANGE3, height=1).pack(fill="x", padx=8)
+
+        tk.Label(right, text="Description:", bg=BG3, fg=ORANGE_DIM,
+                 font=FONT_MONO_S).pack(anchor="w", padx=10, pady=(6,1))
+        self.detail_desc = scrolledtext.ScrolledText(right, bg=BG2, fg=ORANGE, font=FONT_MONO_S,
+                                                      relief="flat", bd=0, height=5,
+                                                      wrap="word", state="disabled")
+        self.detail_desc.pack(fill="x", padx=10, pady=(0,4))
+
+        tk.Label(right, text="Resources:", bg=BG3, fg=ORANGE_DIM,
+                 font=FONT_MONO_S).pack(anchor="w", padx=10, pady=(2,1))
+        self.res_lb = tk.Listbox(right, bg=BG2, fg=ORANGE2, font=("Consolas", 8),
+                                  selectbackground=ORANGE3, selectforeground=BG,
+                                  relief="flat", bd=0, height=3, activestyle="none")
+        self.res_lb.pack(fill="x", padx=10, pady=(0,4))
+
+        tk.Label(right, text="Notes:", bg=BG3, fg=ORANGE_DIM,
+                 font=FONT_MONO_S).pack(anchor="w", padx=10, pady=(2,1))
+        self.notes_box = styled_text(right, height=3, width=50)
+        self.notes_box.pack(fill="x", padx=10, pady=(0,4))
+        self.notes_box.bind("<FocusOut>", lambda e: self._save_notes())
+
+        btn_row = tk.Frame(right, bg=BG3)
+        btn_row.pack(padx=10, pady=4, anchor="w")
+        styled_button(btn_row, "✓ Mark Complete", self._mark_complete, width=16,
+                      bg=ORANGE3, colour=BG).pack(side="left", padx=(0,4))
+        styled_button(btn_row, "▶ In Progress", self._mark_in_progress, width=14).pack(side="left", padx=4)
+        styled_button(btn_row, "— Reset", self._mark_not_started, width=10).pack(side="left", padx=4)
+
+        # ── Stats bar ──
+        stats_bar = tk.Frame(self, bg=BG3, highlightbackground=ORANGE3, highlightthickness=1)
+        stats_bar.pack(fill="x", padx=10, pady=(0,8))
+        self.stat_labels = {}
+        for key in ("Total Hours","Completed","Remaining","Progress"):
+            col = tk.Frame(stats_bar, bg=BG3)
+            col.pack(side="left", expand=True, fill="x", ipadx=4, ipady=4)
+            tk.Label(col, text=key, bg=BG3, fg=ORANGE_DIM, font=FONT_MONO_S).pack()
+            lbl = tk.Label(col, text="—", bg=BG3, fg=ORANGE, font=FONT_BOLD)
+            lbl.pack()
+            self.stat_labels[key] = lbl
+
+        self._refresh_modules()
+
+    def _compute_stats(self):
+        mods    = self.program.get("modules", [])
+        total_h = sum(m.get("estimated_hours", 0) for m in mods)
+        done_h  = sum(m.get("estimated_hours", 0) for m in mods if m.get("status") == "complete")
+        pct     = int(done_h / total_h * 100) if total_h else 0
+        done_n  = sum(1 for m in mods if m.get("status") == "complete")
+        total_n = len(mods)
+        return total_h, done_h, total_h - done_h, pct, done_n, total_n
+
+    def _draw_progress(self):
+        self._load_program()
+        _, _, _, pct, done_n, total_n = self._compute_stats()
+        self.prog_canvas.delete("all")
+        w = self.prog_canvas.winfo_width() or 600
+        bar_w = int(w * 0.72)
+        filled = int(bar_w * pct / 100)
+        self.prog_canvas.create_rectangle(0, 4, bar_w, 26, fill=BG2, outline=ORANGE3)
+        if filled > 0:
+            fill_col = GREEN if pct == 100 else ORANGE
+            self.prog_canvas.create_rectangle(0, 4, filled, 26, fill=fill_col, outline="")
+        self.prog_canvas.create_text(
+            bar_w + 10, 15,
+            text=f"{pct}%  ({done_n}/{total_n} modules)",
+            fill=ORANGE, font=FONT_BOLD, anchor="w")
+
+    def _refresh_modules(self):
+        self._load_program()
+        for row in self.mod_tree.get_children():
+            self.mod_tree.delete(row)
+        STATUS_SYM = {"not_started": "—", "in_progress": "▶", "complete": "✓"}
+        for m in self.program.get("modules", []):
+            sym = STATUS_SYM.get(m.get("status","not_started"), "—")
+            tag = m.get("status","not_started")
+            self.mod_tree.insert("", "end", iid=str(m["id"]), values=(
+                m["id"], m.get("title","")[:32],
+                m.get("estimated_hours",""), sym,
+            ), tags=(tag,))
+        self.mod_tree.tag_configure("complete",    foreground=GREEN)
+        self.mod_tree.tag_configure("in_progress", foreground=ORANGE)
+        self.mod_tree.tag_configure("not_started", foreground=GREY)
+        # update stats bar
+        total_h, done_h, rem_h, pct, _, _ = self._compute_stats()
+        self.stat_labels["Total Hours"].config(text=f"{total_h:.1f}h")
+        self.stat_labels["Completed"].config(text=f"{done_h:.1f}h")
+        self.stat_labels["Remaining"].config(text=f"{rem_h:.1f}h")
+        self.stat_labels["Progress"].config(text=f"{pct}%",
+                                             fg=GREEN if pct == 100 else ORANGE)
+        self.after(50, self._draw_progress)
+
+    def _on_module_select(self, event=None):
+        sel = self.mod_tree.selection()
+        if not sel:
+            return
+        mid = int(sel[0])
+        self._current_module_id = mid
+        module = next((m for m in self.program.get("modules",[]) if m["id"] == mid), None)
+        if module:
+            self._show_module_detail(module)
+
+    def _show_module_detail(self, module):
+        self.detail_title.config(text=module.get("title",""))
+        self.detail_desc.config(state="normal")
+        self.detail_desc.delete("1.0","end")
+        self.detail_desc.insert("1.0", module.get("description",""))
+        self.detail_desc.config(state="disabled")
+        self.res_lb.delete(0,"end")
+        for r in module.get("resources",[]):
+            self.res_lb.insert("end", f"  {r}")
+        self.notes_box.delete("1.0","end")
+        self.notes_box.insert("1.0", module.get("notes",""))
+
+    def _get_current_module(self):
+        if self._current_module_id is None:
+            messagebox.showinfo("Select", "Select a module first.", parent=self)
+            return None
+        return next((m for m in self.program.get("modules",[])
+                     if m["id"] == self._current_module_id), None)
+
+    def _save_notes(self):
+        if self._current_module_id is None:
+            return
+        programs = load_programs()
+        for p in programs:
+            if p["id"] == self.program_id:
+                for m in p.get("modules",[]):
+                    if m["id"] == self._current_module_id:
+                        m["notes"] = self.notes_box.get("1.0","end").strip()
+        save_programs(programs)
+        self._load_program()
+
+    def _set_module_status(self, status):
+        mod = self._get_current_module()
+        if not mod:
+            return
+        programs = load_programs()
+        for p in programs:
+            if p["id"] == self.program_id:
+                for m in p.get("modules",[]):
+                    if m["id"] == self._current_module_id:
+                        m["status"] = status
+                        m["completed_date"] = today_str() if status == "complete" else None
+        save_programs(programs)
+        self._refresh_modules()
+        # re-select the same module
+        try:
+            self.mod_tree.selection_set(str(self._current_module_id))
+            self._on_module_select()
+        except Exception:
+            pass
+        self.app.status(f"Module {self._current_module_id} → {status}.")
+
+    def _mark_complete(self):    self._set_module_status("complete")
+    def _mark_in_progress(self): self._set_module_status("in_progress")
+    def _mark_not_started(self): self._set_module_status("not_started")
+
+    def _save_dates(self):
+        start  = self.start_var.get().strip()
+        target = self.target_var.get().strip()
+        for val in [start, target]:
+            if val:
+                try:
+                    datetime.strptime(val, "%Y-%m-%d")
+                except ValueError:
+                    messagebox.showwarning("Format", "Dates must be YYYY-MM-DD.", parent=self)
+                    return
+        programs = load_programs()
+        for p in programs:
+            if p["id"] == self.program_id:
+                p["start_date"]  = start
+                p["target_date"] = target
+        save_programs(programs)
+        self._load_program()
+        self.app.status("Dates saved.")
+
+    def _back(self):
+        self.app.show("courses")
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # MAIN APPLICATION
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1054,6 +1624,7 @@ class CommandCenterApp(tk.Tk):
             ("tasks",      "☰  Tasks"),
             ("log",        "✎  Daily Log"),
             ("search",     "⌕  Search"),
+            ("courses",    "◉  Courses"),
         ]
         for key, label in nav_items:
             btn = tk.Button(
@@ -1104,11 +1675,21 @@ class CommandCenterApp(tk.Tk):
             "tasks":     TaskScreen,
             "log":       DailyLogScreen,
             "search":    SearchScreen,
+            "courses":   CoursesScreen,
         }
         cls = screen_map.get(name)
         if cls:
             screen = cls(self.content, self)
             screen.pack(fill="both", expand=True)
+        self._update_badge()
+
+    def show_program(self, program_id: int):
+        for k, btn in self.nav_buttons.items():
+            btn.config(bg=ORANGE3 if k == "courses" else BG2,
+                       fg=BG if k == "courses" else ORANGE)
+        for w in self.content.winfo_children():
+            w.destroy()
+        ProgramDetailScreen(self.content, self, program_id).pack(fill="both", expand=True)
         self._update_badge()
 
     def status(self, msg):
