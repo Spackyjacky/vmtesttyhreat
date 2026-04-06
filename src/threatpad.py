@@ -31,6 +31,17 @@ except Exception:
     ASCIIMenuIntegration = None
 
 
+# --------------------- Helpers ---------------------
+def _darken_hex(hex_colour, factor=0.7):
+    """Return a darkened version of a #rrggbb hex colour string."""
+    hex_colour = hex_colour.lstrip('#')
+    r, g, b = int(hex_colour[0:2], 16), int(hex_colour[2:4], 16), int(hex_colour[4:6], 16)
+    r = int(r * factor)
+    g = int(g * factor)
+    b = int(b * factor)
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+
 # --------------------- Config ---------------------
 class Config:
     CUSTOM_DICT_FILE = "custom_dict.txt"
@@ -62,6 +73,7 @@ class Config:
         'virustotal': '',
         'abuseipdb': ''
     }
+    LOCK_PASSWORD = "unlock"
     CLIENTS = ["Client Alpha", "Client Beta", "Client Gamma"]
     CLIPBOARD_CLEAR_DELAY = 0   # seconds after copy; 0 = disabled
 
@@ -293,6 +305,7 @@ class SOCNotesApp:
         self._closed_tabs      = []   # list of (title, content, filepath) — recently closed
         self._pinned_tabs      = set()
         self._bookmarks        = {}   # {frame: set of line numbers}
+        self._tab_colour_images = {}  # {frame: PhotoImage} — prevents GC
         self._redaction_on     = False
         self._clipboard_clear_job = None
         self._ioc_panel_win    = None
@@ -359,6 +372,7 @@ class SOCNotesApp:
                     self.config.COPY_CLEAR = settings.get('copy_clear', False)
                     self.config.COPY_COUNT_WARN = settings.get('copy_count_warn', True)
                     self.config.CLIPBOARD_CLEAR_DELAY = settings.get('clipboard_clear_delay', 0)
+                    self.config.LOCK_PASSWORD = settings.get('lock_password', 'unlock')
                     raw_clients = settings.get('clients', {})
                     # Migrate: older saves stored clients as a plain list of names
                     if isinstance(raw_clients, list):
@@ -397,6 +411,7 @@ class SOCNotesApp:
                 'copy_clear': self.config.COPY_CLEAR,
                 'copy_count_warn': self.config.COPY_COUNT_WARN,
                 'clipboard_clear_delay': self.config.CLIPBOARD_CLEAR_DELAY,
+                'lock_password': self.config.LOCK_PASSWORD,
                 'clients': self.clients,
                 'active_client': self.active_client,
                 'theme_name': self.config.THEME_NAME,
@@ -3712,6 +3727,26 @@ class SOCNotesApp:
                     width=5).pack(side="left", padx=6)
         ttk.Label(cb_frame, text="(clears clipboard automatically after each Safe Copy)",
                   foreground="grey", font=("Arial", 8)).pack(side="left")
+        lock_frame = ttk.LabelFrame(parent, text="Session Lock  (Ctrl+L)")
+        lock_frame.pack(fill="x", padx=10, pady=5)
+        pw_row = ttk.Frame(lock_frame)
+        pw_row.pack(fill="x", padx=5, pady=4)
+        ttk.Label(pw_row, text="Lock passphrase:").pack(side="left")
+        self._lock_pw_var = tk.StringVar(value=self.config.LOCK_PASSWORD)
+        self._lock_pw_entry = ttk.Entry(pw_row, textvariable=self._lock_pw_var,
+                                        show="●", width=22)
+        self._lock_pw_entry.pack(side="left", padx=6)
+
+        def _toggle_show_lock():
+            cur = self._lock_pw_entry.cget("show")
+            self._lock_pw_entry.config(show="" if cur else "●")
+            lock_show_btn.config(text="Hide" if cur else "Show")
+
+        lock_show_btn = ttk.Button(pw_row, text="Show", width=6, command=_toggle_show_lock)
+        lock_show_btn.pack(side="left")
+        ttk.Label(lock_frame, text="Leave blank to disable passphrase check.",
+                  foreground="grey", font=("Arial", 8)).pack(anchor="w", padx=5, pady=(0, 4))
+
         autosave_frame = ttk.LabelFrame(parent, text="Auto-save")
         autosave_frame.pack(fill="x", padx=10, pady=5)
         ttk.Label(autosave_frame, text="Auto-save interval (minutes):").pack(anchor="w", padx=5, pady=2)
@@ -3806,6 +3841,8 @@ class SOCNotesApp:
             self.config.COPY_COUNT_WARN = self.copy_count_warn_var.get()
         if hasattr(self, 'clipboard_clear_var'):
             self.config.CLIPBOARD_CLEAR_DELAY = self.clipboard_clear_var.get()
+        if hasattr(self, '_lock_pw_var'):
+            self.config.LOCK_PASSWORD = self._lock_pw_var.get()
         if hasattr(self, 'theme_preset_var'):
             self.config.THEME_NAME = self.theme_preset_var.get()
         
@@ -4847,26 +4884,47 @@ class SOCNotesApp:
     # --------------------- Tab Colour Coding ---------------------
 
     def _set_tab_colour(self, frame, colour):
-        """Set a visual colour indicator for a tab."""
+        """Set a coloured square indicator on a tab using a PhotoImage."""
         if not hasattr(self, '_tab_colours'):
             self._tab_colours = {}
+        if not hasattr(self, '_tab_colour_images'):
+            self._tab_colour_images = {}
+
         self._tab_colours[frame] = colour
-        # We use the tab text label with a prefix colour emoji
+
+        _HEX = {
+            "red":    "#ff6b6b",
+            "orange": "#ff8c42",
+            "yellow": "#ffd700",
+            "green":  "#4caf50",
+            "blue":   "#4488ff",
+            "purple": "#9c59d1",
+        }
         try:
+            # Strip any legacy emoji prefix from the title
             current_title = self.notebook.tab(frame, "text")
-            # Strip any previous colour prefix
-            for prefix in ("\U0001f7e5 ", "\U0001f7e7 ", "\U0001f7e8 ",
-                           "\U0001f7e9 ", "\U0001f7e6 ", "\U0001f7ea "):
-                current_title = current_title.replace(prefix, "")
-            colour_map = {
-                "red": "\U0001f7e5 ", "orange": "\U0001f7e7 ",
-                "yellow": "\U0001f7e8 ", "green": "\U0001f7e9 ",
-                "blue": "\U0001f7e6 ", "purple": "\U0001f7ea ",
-                "none": "",
-            }
-            prefix = colour_map.get(colour, "")
-            self.notebook.tab(frame, text=prefix + current_title)
-            self._reposition_close_buttons()
+            for pfx in ("\U0001f7e5 ", "\U0001f7e7 ", "\U0001f7e8 ",
+                        "\U0001f7e9 ", "\U0001f7e6 ", "\U0001f7ea ", "📌 "):
+                current_title = current_title.lstrip()
+                if current_title.startswith(pfx):
+                    current_title = current_title[len(pfx):]
+            self.notebook.tab(frame, text=current_title)
+
+            if colour == "none":
+                self._tab_colour_images.pop(frame, None)
+                self.notebook.tab(frame, image="", compound="none")
+            else:
+                hex_col = _HEX.get(colour, "#888888")
+                img = tk.PhotoImage(width=12, height=12)
+                img.put(hex_col, to=(0, 0, 12, 12))
+                # Slightly darken the 1-px border for a framed look
+                border = _darken_hex(hex_col, 0.6)
+                img.put(border, to=(0, 0, 12, 1))
+                img.put(border, to=(0, 11, 12, 12))
+                img.put(border, to=(0, 0, 1, 12))
+                img.put(border, to=(11, 0, 12, 12))
+                self._tab_colour_images[frame] = img   # keep reference
+                self.notebook.tab(frame, image=img, compound="left")
         except Exception:
             pass
 
@@ -5027,17 +5085,33 @@ class SOCNotesApp:
         self.update_status(f"Bookmark ← line {prv}")
 
     def lock_session(self):
+        self.root.update_idletasks()
+        x = self.root.winfo_x()
+        y = self.root.winfo_y()
+        w = self.root.winfo_width()
+        h = self.root.winfo_height()
+
         lock_win = tk.Toplevel(self.root)
-        lock_win.title("ThreatPad — Locked")
-        lock_win.attributes("-fullscreen", True)
+        lock_win.overrideredirect(True)           # no title bar / borders
+        lock_win.geometry(f"{w}x{h}+{x}+{y}")
         lock_win.attributes("-topmost", True)
         lock_win.configure(bg="#0d0d0d")
         lock_win.protocol("WM_DELETE_WINDOW", lambda: None)
-        lock_win.resizable(False, False)
+
+        # Keep overlay aligned when root window moves/resizes
+        def _follow(event=None):
+            try:
+                lock_win.geometry(
+                    f"{self.root.winfo_width()}x{self.root.winfo_height()}"
+                    f"+{self.root.winfo_x()}+{self.root.winfo_y()}"
+                )
+            except Exception:
+                pass
+        self.root.bind("<Configure>", _follow, add=True)
 
         tk.Label(lock_win, text="🔒  SESSION LOCKED",
-                 font=("Consolas", 26, "bold"), bg="#0d0d0d", fg="#00bfff").pack(pady=(160, 16))
-        tk.Label(lock_win, text="Enter passphrase to unlock  (default: unlock)",
+                 font=("Consolas", 26, "bold"), bg="#0d0d0d", fg="#00bfff").pack(pady=(80, 16))
+        tk.Label(lock_win, text="Enter passphrase to unlock",
                  font=("Consolas", 11), bg="#0d0d0d", fg="#555555").pack()
 
         entry = tk.Entry(lock_win, show="●", font=("Consolas", 14),
@@ -5050,10 +5124,11 @@ class SOCNotesApp:
                            bg="#0d0d0d", fg="#ff6b6b")
         msg_lbl.pack()
 
-        stored = getattr(self, '_lock_password', 'unlock')
+        stored = self.config.LOCK_PASSWORD
 
         def _try_unlock():
-            if entry.get() == stored:
+            if not stored or entry.get() == stored:
+                self.root.unbind("<Configure>")
                 lock_win.destroy()
                 self.update_status("Session unlocked")
             else:
