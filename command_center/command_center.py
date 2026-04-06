@@ -28,9 +28,10 @@ MEMORY_DB     = DATA_DIR / "memory.db"
 PROGRAMS_JSON  = DATA_DIR / "programs.json"
 WINS_JSON      = DATA_DIR / "wins.json"
 KPIS_JSON      = DATA_DIR / "kpis.json"
-INCIDENTS_JSON = DATA_DIR / "incidents.json"
-WEEKLY_JSON    = DATA_DIR / "weekly_plans.json"
-WINSTATE_JSON  = DATA_DIR / "window_state.json"
+INCIDENTS_JSON  = DATA_DIR / "incidents.json"
+WEEKLY_JSON     = DATA_DIR / "weekly_plans.json"
+WINSTATE_JSON   = DATA_DIR / "window_state.json"
+DEV_PLANS_JSON  = DATA_DIR / "dev_plans.json"
 
 for d in [MEMORY_DIR, DATA_DIR, LOGS_DIR, DAILY_DIR]:
     d.mkdir(parents=True, exist_ok=True)
@@ -87,6 +88,62 @@ def load_programs():
 
 def save_programs(programs):
     PROGRAMS_JSON.write_text(json.dumps(programs, indent=2))
+
+def load_dev_plans():
+    if not DEV_PLANS_JSON.exists():
+        return []
+    try:
+        return json.loads(DEV_PLANS_JSON.read_text()) or []
+    except Exception:
+        return []
+
+def save_dev_plans(plans):
+    DEV_PLANS_JSON.write_text(json.dumps(plans, indent=2))
+
+def _soc_dev_plan():
+    """Returns the pre-built SOC L1→L3 development plan seed data."""
+    return {
+        "id": 1,
+        "name": "SOC Career Development: L1 → L3",
+        "description": (
+            "A structured roadmap from L1 SOC Analyst to L3 Senior SOC Analyst, covering "
+            "the full skill stack required for progression in a modern Microsoft-stack Security "
+            "Operations Centre. Each milestone builds on the last — complete them in order for "
+            "maximum impact. Completing milestones here logs wins and tracks your career KPIs."
+        ),
+        "current_level": "L1",
+        "target_level": "L3",
+        "created_date": "2026-04-06",
+        "target_date": "2027-10-01",
+        "status": "active",
+        "milestones": [
+            {"id":1,"phase":"Phase 1: Solidify L1 Core","title":"Master KQL and Microsoft Sentinel Fundamentals","description":"Build fluency in Kusto Query Language (KQL) to query logs across Microsoft Sentinel workspaces. Learn to write queries against SecurityEvent, SigninLogs, CommonSecurityLog, and AuditLogs tables. This is the foundation of all triage and investigation work in a Microsoft-stack SOC.","skills":["KQL query writing","Log table navigation","Sentinel workspace management","Alert rule anatomy"],"resources":["https://learn.microsoft.com/en-us/azure/data-explorer/kusto/query/","https://learn.microsoft.com/en-us/training/paths/sc-200-utilize-kql-for-azure-sentinel/","https://github.com/reprise99/Sentinel-Queries"],"estimated_weeks":3,"level":"L1→L2","status":"not_started","completed_date":None,"notes":""},
+            {"id":2,"phase":"Phase 1: Solidify L1 Core","title":"SC-200 Certification — Microsoft Security Operations Analyst","description":"Complete the SC-200 exam to validate skills across Microsoft Defender XDR, Sentinel, and cloud security operations. This certification is already in progress and provides structured coverage of the full Microsoft security stack used daily in the SOC. Passing this cert signals readiness for expanded L1 responsibilities and L2 shadowing.","skills":["Microsoft Defender XDR","Sentinel incident management","Threat intelligence integration","SOAR playbook basics"],"resources":["https://learn.microsoft.com/en-us/certifications/exams/sc-200/","https://learn.microsoft.com/en-us/training/courses/sc-200t00","https://github.com/MicrosoftLearning/SC-200T00A-Microsoft-Security-Operations-Analyst"],"estimated_weeks":4,"level":"L1→L2","status":"in_progress","completed_date":None,"notes":"Already in progress via Courses tab — sync progress there."},
+            {"id":3,"phase":"Phase 1: Solidify L1 Core","title":"MITRE ATT&CK Framework — Practical Mapping","description":"Go beyond reading the ATT&CK matrix — practice mapping real alerts to specific techniques and sub-techniques. Use ATT&CK Navigator to build adversary emulation layers and understand which techniques your SIEM detects vs. has blind spots for. This skill transforms alert triage from reactive to contextual.","skills":["Technique-to-alert mapping","ATT&CK Navigator","Tactic chain reasoning","Detection gap identification"],"resources":["https://attack.mitre.org/","https://mitre-attack.github.io/attack-navigator/","https://www.sans.org/blog/mitre-attack-framework-complete-guide/"],"estimated_weeks":2,"level":"L1→L2","status":"not_started","completed_date":None,"notes":""},
+            {"id":4,"phase":"Phase 1: Solidify L1 Core","title":"Phishing and Email Threat Analysis","description":"Develop a repeatable methodology for triaging phishing emails: header analysis, URL detonation, attachment sandboxing, and sender reputation checks. Learn to pivot from an email IOC into a broader campaign investigation using URLScan, VirusTotal, and MXToolbox. This is the most common L1 task and speed and accuracy here is the key L2 differentiator.","skills":["Email header parsing","URL analysis and detonation","Attachment sandboxing","Phishing IOC extraction"],"resources":["https://urlscan.io/","https://www.virustotal.com/","https://mxtoolbox.com/EmailHeaders.aspx","https://learn.microsoft.com/en-us/microsoft-365/security/office-365-security/anti-phishing-policies-about"],"estimated_weeks":2,"level":"L1→L2","status":"not_started","completed_date":None,"notes":""},
+            {"id":5,"phase":"Phase 1: Solidify L1 Core","title":"Network Forensics Fundamentals","description":"Learn to read and analyze packet captures (PCAPs) to reconstruct attacker activity, identify C2 communication patterns, and detect data exfiltration. Practice with Wireshark on known-malicious capture files from malware-traffic-analysis.net to develop pattern recognition for DNS tunneling, HTTP beaconing, and SMB lateral movement.","skills":["Wireshark packet analysis","DNS/HTTP/SMB protocol analysis","C2 beacon identification","PCAP-based IOC extraction"],"resources":["https://www.wireshark.org/docs/wsug_html_chunked/","https://www.malware-traffic-analysis.net/","https://unit42.paloaltonetworks.com/using-wireshark-identifying-hosts-and-users/"],"estimated_weeks":3,"level":"L1→L2","status":"not_started","completed_date":None,"notes":""},
+            {"id":6,"phase":"Phase 1: Solidify L1 Core","title":"Endpoint Investigation with Microsoft Defender XDR","description":"Build proficiency in Defender XDR's device timeline, advanced hunting, and incident graph to reconstruct endpoint-based attack chains. Learn to trace process trees, review file and registry events, and identify persistence mechanisms from the Defender console. Understanding what happened on a single endpoint separates strong L1 from weak.","skills":["Defender device timeline analysis","Process tree investigation","Advanced Hunting in Defender XDR","Persistence mechanism identification"],"resources":["https://learn.microsoft.com/en-us/microsoft-365/security/defender/advanced-hunting-overview","https://learn.microsoft.com/en-us/microsoft-365/security/defender-endpoint/investigate-machines","https://github.com/microsoft/Microsoft-365-Defender-Hunting-Queries"],"estimated_weeks":3,"level":"L1→L2","status":"not_started","completed_date":None,"notes":""},
+            {"id":7,"phase":"Phase 1: Solidify L1 Core","title":"Incident Response Process and Documentation","description":"Internalize the IR lifecycle (Preparation, Detection, Containment, Eradication, Recovery, Lessons Learned) and practice writing clear, evidence-backed incident tickets. Learn to document timelines, chain of custody, and recommended actions so a senior analyst can act without asking clarifying questions. Poor documentation is the most common reason L1 analysts stall.","skills":["IR lifecycle phases","Incident ticket writing","Evidence chain of custody","Timeline reconstruction"],"resources":["https://www.nist.gov/publications/computer-security-incident-handling-guide","https://www.sans.org/white-papers/33901/","https://github.com/certsocietegenerale/IRM"],"estimated_weeks":2,"level":"L1→L2","status":"not_started","completed_date":None,"notes":""},
+            {"id":8,"phase":"Phase 1: Solidify L1 Core","title":"PowerShell for SOC Analysts","description":"Learn PowerShell fundamentals with a security focus: parsing event logs, querying Active Directory, automating repetitive triage steps, and reading malicious PowerShell. Practice decoding base64-encoded commands, understanding execution policy bypasses, and recognising LOLBin abuse patterns — attackers use PowerShell constantly.","skills":["PowerShell scripting basics","Event log parsing","PowerShell deobfuscation","AD querying with PowerShell"],"resources":["https://learn.microsoft.com/en-us/powershell/scripting/learn/ps101/00-introduction","https://github.com/danielbohannon/Invoke-Obfuscation","https://www.sans.org/blog/powershell-for-incident-response/"],"estimated_weeks":3,"level":"L1→L2","status":"not_started","completed_date":None,"notes":""},
+            {"id":9,"phase":"Phase 1: Solidify L1 Core","title":"Threat Intelligence Consumption and IOC Management","description":"Learn to ingest, evaluate, and operationalise threat intelligence feeds — distinguishing high-fidelity IOCs from noise. Practice enriching alerts with context from MISP, VirusTotal, and open-source threat reports. Understanding how to age out stale IOCs and prioritise high-confidence indicators prevents alert fatigue.","skills":["IOC enrichment workflow","Threat feed evaluation","MISP basics","Intel-to-alert correlation"],"resources":["https://www.misp-project.org/documentation/","https://otx.alienvault.com/","https://learn.microsoft.com/en-us/azure/sentinel/understand-threat-intelligence"],"estimated_weeks":2,"level":"L1→L2","status":"not_started","completed_date":None,"notes":""},
+            {"id":10,"phase":"Phase 1: Solidify L1 Core","title":"CompTIA CySA+ Certification","description":"Earn CySA+ to validate broad SOC analyst competencies including threat and vulnerability management, software and systems security, compliance, incident response, and security architecture. This vendor-neutral cert is frequently listed as a requirement for L2 roles and provides a strong conceptual foundation before specialised GIAC certifications.","skills":["Vulnerability management","Threat hunting concepts","Compliance frameworks","Behavioral analytics"],"resources":["https://www.comptia.org/certifications/cybersecurity-analyst","https://www.professormesser.com/cybersecurity-analyst-plus/","https://www.examcompass.com/comptia/cysa-plus-practice-tests/"],"estimated_weeks":5,"level":"L1→L2","status":"not_started","completed_date":None,"notes":""},
+            {"id":11,"phase":"Phase 2: L2 Analyst Depth","title":"Advanced KQL — Correlation Rules and Custom Detections","description":"Move from querying known tables to building multi-table join queries, time-window correlations, and custom scheduled analytics rules in Sentinel. Learn to write detections that reduce false positives through behavioural baselines and entity enrichment. L2 analysts own detection quality, not just consume alerts others built.","skills":["Multi-table KQL joins","Time-series anomaly queries","Sentinel analytics rule authoring","False positive tuning"],"resources":["https://learn.microsoft.com/en-us/azure/sentinel/detect-threats-custom","https://github.com/Azure/Azure-Sentinel/tree/master/Detections","https://www.kqlsearch.com/"],"estimated_weeks":3,"level":"L2→L3","status":"not_started","completed_date":None,"notes":""},
+            {"id":12,"phase":"Phase 2: L2 Analyst Depth","title":"Malware Analysis Basics — Static and Dynamic","description":"Learn first-pass malware analysis: static analysis (strings, PE header inspection, YARA rules) and dynamic analysis (sandboxed detonation, behavioural monitoring). The goal is to extract IOCs, understand capabilities, and classify malware families accurately enough to escalate with full context — not to become a full reverse engineer.","skills":["PE file static analysis","Strings and hash analysis","Sandbox detonation","YARA rule basics"],"resources":["https://any.run/","https://www.hybrid-analysis.com/","https://github.com/VirusTotal/yara","https://malware.training/"],"estimated_weeks":4,"level":"L2→L3","status":"not_started","completed_date":None,"notes":""},
+            {"id":13,"phase":"Phase 2: L2 Analyst Depth","title":"SOAR Playbook Development with Sentinel Logic Apps","description":"Design and build automation playbooks in Microsoft Sentinel using Azure Logic Apps to automate enrichment, containment, and notification workflows. Start with simple enrichment (auto-add VirusTotal reputation to alerts) then progress to response actions (isolate endpoint, disable user account). Automation is the primary force multiplier for L2 analysts.","skills":["Azure Logic Apps authoring","Sentinel playbook triggers","API-based enrichment automation","Automated containment actions"],"resources":["https://learn.microsoft.com/en-us/azure/sentinel/automate-responses-with-playbooks","https://github.com/Azure/Azure-Sentinel/tree/master/Playbooks","https://techcommunity.microsoft.com/t5/microsoft-sentinel-blog/"],"estimated_weeks":3,"level":"L2→L3","status":"not_started","completed_date":None,"notes":""},
+            {"id":14,"phase":"Phase 2: L2 Analyst Depth","title":"Python Scripting for Security Automation","description":"Develop Python scripting skills focused on security tasks: automating IOC enrichment via REST APIs (VirusTotal, Shodan, Sentinel), parsing large log files, and building lightweight investigation tools. Python scripting is increasingly expected at L2 level and is the primary language for custom tooling in most SOC environments.","skills":["Python REST API integration","Log parsing with Python","VirusTotal/Shodan API automation","pandas for log analysis"],"resources":["https://docs.python.org/3/tutorial/","https://developers.virustotal.com/reference/overview","https://github.com/Te-k/harpoon"],"estimated_weeks":4,"level":"L2→L3","status":"not_started","completed_date":None,"notes":""},
+            {"id":15,"phase":"Phase 2: L2 Analyst Depth","title":"Advanced Network Forensics — Encrypted Traffic and DNS","description":"Deepen network forensics skills to cover full packet capture analysis for lateral movement scenarios, encrypted traffic analysis (JA3/JA3S fingerprinting), and DNS-based attack detection (DGA domains, tunnelling). Practice reconstructing complete attack chains from Zeek/Bro logs and NetFlow data.","skills":["JA3/JA3S fingerprinting","DGA domain detection","Zeek/Bro log analysis","NetFlow analysis"],"resources":["https://github.com/salesforce/ja3","https://zeek.org/documentation/","https://www.malware-traffic-analysis.net/"],"estimated_weeks":3,"level":"L2→L3","status":"not_started","completed_date":None,"notes":""},
+            {"id":16,"phase":"Phase 2: L2 Analyst Depth","title":"Threat Hunting — Hypothesis-Driven Investigations","description":"Learn structured threat hunting methodologies: develop hypotheses from ATT&CK techniques or threat intelligence, operationalise them as KQL hunts in Sentinel, and document findings positive or negative. Practice hunting for LOLBins, unusual scheduled tasks, and abnormal authentication patterns. Proactive hunting defines the L2 mindset.","skills":["Hunt hypothesis development","LOLBin detection hunting","Behavioural anomaly identification","Hunt documentation"],"resources":["https://github.com/OTRF/ThreatHunter-Playbook","https://www.activecountermeasures.com/threat-hunting-using-flow-data/","https://www.sans.org/white-papers/38700/"],"estimated_weeks":3,"level":"L2→L3","status":"not_started","completed_date":None,"notes":""},
+            {"id":17,"phase":"Phase 2: L2 Analyst Depth","title":"Cloud Security Operations — Azure and M365","description":"Develop competency in investigating cloud-native attacks: Azure AD compromise (token theft, MFA bypass, OAuth abuse), Azure resource abuse (cryptomining, data exfiltration), and M365 attacks (mailbox delegation abuse, eDiscovery exfiltration). Cloud incidents require different investigation techniques than on-prem and are increasingly common.","skills":["Azure AD attack patterns","OAuth and token abuse","M365 security investigation","Azure activity log analysis"],"resources":["https://learn.microsoft.com/en-us/azure/active-directory/identity-protection/overview-identity-protection","https://learn.microsoft.com/en-us/microsoft-365/security/defender/microsoft-secure-score","https://github.com/dafthack/GraphRunner"],"estimated_weeks":4,"level":"L2→L3","status":"not_started","completed_date":None,"notes":""},
+            {"id":18,"phase":"Phase 2: L2 Analyst Depth","title":"Detection Engineering — Writing and Tuning Detections","description":"Own the full detection lifecycle: identify coverage gaps using ATT&CK, write Sentinel analytics rules, test with Atomic Red Team simulations, measure false positive rates, and iterate based on real-world performance. Detection engineering is a core L2 expectation — analysts who only consume detections others built never reach L3.","skills":["Detection gap analysis","Atomic Red Team testing","Sigma rule writing","Detection performance metrics"],"resources":["https://github.com/redcanaryco/atomic-red-team","https://github.com/SigmaHQ/sigma","https://github.com/palantir/alerting-detection-strategy-framework","https://detectionlab.network/"],"estimated_weeks":4,"level":"L2→L3","status":"not_started","completed_date":None,"notes":""},
+            {"id":19,"phase":"Phase 2: L2 Analyst Depth","title":"GIAC GCIH — Incident Handler Certification","description":"Pursue GIAC GCIH to formally validate incident handling skills across the full IR lifecycle including computer crime law, incident handling steps, network investigations, and malware analysis. GCIH is widely recognised as the gold standard for hands-on IR practitioners and is a common requirement for L3 and senior analyst roles.","skills":["Formal IR methodology","Evidence handling","Network attack response","Malware incident containment"],"resources":["https://www.giac.org/certifications/certified-incident-handler-gcih/","https://www.sans.org/cyber-security-courses/hacker-techniques-incident-handling/"],"estimated_weeks":8,"level":"L2→L3","status":"not_started","completed_date":None,"notes":""},
+            {"id":20,"phase":"Phase 2: L2 Analyst Depth","title":"Digital Forensics and Incident Response (DFIR) Fundamentals","description":"Build hands-on DFIR skills: forensic disk imaging, memory acquisition and analysis with Volatility, Windows artifact analysis (MFT, prefetch, shimcache, registry hives), and timeline super-analysis. DFIR capability is what allows L2/L3 analysts to definitively answer 'what happened' rather than 'we think this happened'.","skills":["Memory forensics with Volatility","Windows artifact analysis","Forensic imaging and preservation","Timeline super-analysis"],"resources":["https://github.com/volatilityfoundation/volatility3","https://github.com/EricZimmerman/","https://dfir.training/","https://cyberdefenders.org/"],"estimated_weeks":5,"level":"L2→L3","status":"not_started","completed_date":None,"notes":""},
+            {"id":21,"phase":"Phase 2: L2 Analyst Depth","title":"Advanced Malware Analysis — Behavioural and Code-Level","description":"Progress beyond sandbox detonation to manual behavioural analysis and introductory static code analysis using x64dbg or Ghidra. Understand common malware families (Emotet, QakBot, Cobalt Strike) well enough to identify them from behavioural patterns alone. Advanced malware analysis makes L3 analysts the final escalation point for complex cases.","skills":["x64dbg dynamic analysis","Ghidra static analysis basics","Packer identification and unpacking","Cobalt Strike beacon analysis"],"resources":["https://ghidra-sre.org/","https://github.com/x64dbg/x64dbg","https://github.com/HuskyHacks/PMAT-labs","https://bazaar.abuse.ch/"],"estimated_weeks":6,"level":"L2→L3","status":"not_started","completed_date":None,"notes":""},
+            {"id":22,"phase":"Phase 2: L2 Analyst Depth","title":"Purple Team Operations — Adversary Emulation","description":"Lead or participate in purple team exercises where red team techniques are run in a controlled environment and blue team detections are validated in real time. Use Caldera or Atomic Red Team to emulate specific ATT&CK techniques, measure detection coverage, and feed gaps back into the detection engineering pipeline.","skills":["MITRE Caldera operation authoring","Detection validation methodology","Coverage gap reporting","Blue/red collaboration"],"resources":["https://github.com/mitre/caldera","https://github.com/redcanaryco/atomic-red-team","https://www.sans.org/blog/how-to-build-a-purple-team/"],"estimated_weeks":4,"level":"L2→L3","status":"not_started","completed_date":None,"notes":""},
+            {"id":23,"phase":"Phase 2: L2 Analyst Depth","title":"Incident Response Leadership and Stakeholder Communication","description":"Develop skills for leading incident response calls: structured communication under pressure, technical-to-executive translation, running post-incident reviews, and coordinating across IT, legal, and leadership. L3 analysts are expected to own major incidents end-to-end and communicate findings clearly to non-technical stakeholders.","skills":["IR call leadership","Executive briefing writing","Post-incident review facilitation","Cross-team coordination"],"resources":["https://csrc.nist.gov/publications/detail/sp/800-61/rev-2/final","https://github.com/meirwah/awesome-incident-response","https://www.cisa.gov/sites/default/files/publications/Federal_Government_Cybersecurity_Incident_and_Vulnerability_Response_Playbooks_508C.pdf"],"estimated_weeks":3,"level":"L2→L3","status":"not_started","completed_date":None,"notes":""},
+            {"id":24,"phase":"Phase 2: L2 Analyst Depth","title":"Mentoring and Knowledge Transfer","description":"Formalise mentoring skills by creating runbooks, triage guides, and onboarding materials for L1 analysts. Practice explaining complex investigations clearly and reviewing junior analysts' work with constructive, specific feedback. Multiplying team capability through others is a non-negotiable L3 competency — you cannot teach what you do not deeply understand.","skills":["Runbook and playbook writing","Technical documentation","L1 analyst coaching","Knowledge base maintenance"],"resources":["https://github.com/certsocietegenerale/IRM","https://github.com/counteractive/incident-response-plan-template","https://www.atlassian.com/incident-management/runbook"],"estimated_weeks":3,"level":"L2→L3","status":"not_started","completed_date":None,"notes":""},
+            {"id":25,"phase":"Phase 2: L2 Analyst Depth","title":"GIAC GCIA — Intrusion Analyst Certification","description":"Earn GIAC GCIA to validate deep network traffic analysis and intrusion detection skills, including protocol analysis, signature writing for Snort/Suricata, and network forensic investigation. Combined with GCIH and CySA+, this certification portfolio demonstrates a complete L3-level competency profile to hiring managers and peers.","skills":["Snort/Suricata rule writing","Deep protocol analysis","Network intrusion detection","Traffic-based threat hunting"],"resources":["https://www.giac.org/certifications/certified-intrusion-analyst-gcia/","https://www.sans.org/cyber-security-courses/network-monitoring-threat-detection/","https://suricata.io/documentation/"],"estimated_weeks":8,"level":"L2→L3","status":"not_started","completed_date":None,"notes":""},
+        ]
+    }
 
 def _json_load(path):
     if not path.exists(): return []
@@ -1300,9 +1357,11 @@ class CoursesScreen(tk.Frame):
         bar.pack(fill="x", padx=10, pady=4)
         styled_button(bar, "+ New Program", self._new_program, width=16,
                       bg=ORANGE3, colour=BG).pack(side="left", padx=4)
-        styled_button(bar, "Open",    self._open_program,  width=10).pack(side="left", padx=4)
-        styled_button(bar, "Delete",  self._delete_program, width=10).pack(side="left", padx=4)
-        styled_button(bar, "Refresh", self._refresh,        width=10).pack(side="right", padx=4)
+        styled_button(bar, "Paste Course",  self._paste_course,  width=14).pack(side="left", padx=4)
+        styled_button(bar, "Open",          self._open_program,  width=10).pack(side="left", padx=4)
+        styled_button(bar, "Edit JSON",     self._edit_course,   width=10).pack(side="left", padx=4)
+        styled_button(bar, "Delete",        self._delete_program, width=10).pack(side="left", padx=4)
+        styled_button(bar, "Refresh",       self._refresh,        width=10).pack(side="right", padx=4)
 
         cols = ("Name","Type","Progress","Start","Target","Status")
         self.tree = make_treeview(self, cols, heights=14)
@@ -1390,6 +1449,58 @@ class CoursesScreen(tk.Frame):
         save_programs([p for p in programs if p["id"] != pid])
         self._refresh()
         self.app.status(f"Program '{prog['name']}' deleted.")
+
+    def _paste_course(self):
+        hint = (
+            'Ask Claude to create a course/program and paste the JSON here.\n'
+            'Required fields: "name", "type" (certification|course|book|project), "modules" (array).\n'
+            'Each module needs: "id", "title", "description", "estimated_hours", "resources" (list), "notes" (str).'
+        )
+        def on_save(data):
+            if not isinstance(data, dict):
+                return "Must be a JSON object {…}"
+            if "name" not in data:
+                return "Missing required field: name"
+            if "modules" not in data or not isinstance(data["modules"], list):
+                return "Missing or invalid 'modules' array"
+            programs = load_programs()
+            data["id"] = max((p["id"] for p in programs), default=0) + 1
+            data.setdefault("status", "active")
+            data.setdefault("start_date", today_str())
+            data.setdefault("type", "course")
+            # Ensure module fields
+            for i, m in enumerate(data["modules"]):
+                m.setdefault("id", i + 1)
+                m.setdefault("status", "not_started")
+                m.setdefault("notes", "")
+                m.setdefault("resources", [])
+            programs.append(data)
+            save_programs(programs)
+            self._refresh()
+            self.app.status(f"Course '{data['name']}' imported ({len(data['modules'])} modules).")
+            return True
+        PasteJSONModal(self, self.app, title="Paste Course JSON", hint=hint, on_save=on_save)
+
+    def _edit_course(self):
+        pid = self._selected_id()
+        if pid is None:
+            return
+        programs = load_programs()
+        prog = next((p for p in programs if p["id"] == pid), None)
+        if not prog:
+            return
+        hint = "Edit the course JSON below, then click Validate & Import to save."
+        def on_save(data):
+            if not isinstance(data, dict):
+                return "Must be a JSON object {…}"
+            data["id"] = pid
+            new_programs = [data if p["id"] == pid else p for p in programs]
+            save_programs(new_programs)
+            self._refresh()
+            self.app.status(f"Course '{data.get('name','')}' updated.")
+            return True
+        modal = PasteJSONModal(self, self.app, title="Edit Course JSON", hint=hint, on_save=on_save)
+        modal.txt.insert("1.0", json.dumps(prog, indent=2))
 
 
 # ── Program Detail Screen ──────────────────────────────────────────────────────
@@ -2328,6 +2439,627 @@ class IncidentTimelineScreen(tk.Frame):
         self._refresh()
         self.app.status(f"Incident #{iid} deleted.")
 
+# ══════════════════════════════════════════════════════════════════════════════
+# DEVELOPMENT PLANS — Loading screen, list, detail, import modal
+# ══════════════════════════════════════════════════════════════════════════════
+
+DEV_STATUS_COLOURS = {
+    "not_started": "#555555",
+    "in_progress": "#ff8c00",
+    "complete":    "#00ff88",
+}
+
+class DevLoadingScreen(tk.Toplevel):
+    """3-second ladder-fill loading animation shown before the dev plans screen."""
+    def __init__(self, parent_win, callback):
+        super().__init__(parent_win)
+        self.callback = callback
+        self.configure(bg=BG)
+        self.overrideredirect(True)
+        # Centre over parent
+        pw = parent_win.winfo_width()  or 1280
+        ph = parent_win.winfo_height() or 800
+        px = parent_win.winfo_rootx()
+        py = parent_win.winfo_rooty()
+        w, h = 400, 440
+        x = px + (pw - w) // 2
+        y = py + (ph - h) // 2
+        self.geometry(f"{w}x{h}+{x}+{y}")
+        self.lift()
+        self.grab_set()
+        self._build()
+
+    def _build(self):
+        tk.Label(self, text="COMMAND CENTER", bg=BG, fg=ORANGE,
+                 font=("Consolas", 18, "bold")).pack(pady=(28, 4))
+        tk.Label(self, text="DEVELOPMENT PLANS", bg=BG, fg=ORANGE_DIM,
+                 font=("Consolas", 11)).pack(pady=(0, 16))
+
+        self._canvas = tk.Canvas(self, bg=BG, width=200, height=240,
+                                  highlightthickness=0)
+        self._canvas.pack()
+
+        self._status = tk.Label(self, text="Initialising...", bg=BG,
+                                 fg=ORANGE_DIM, font=FONT_MONO_S)
+        self._status.pack(pady=14)
+
+        self._draw_rails()
+        self.after(200, lambda: self._animate(0))
+
+    # ── rails (static) ──
+    def _draw_rails(self):
+        c = self._canvas
+        lx, rx = 55, 145
+        self._top_y, self._bot_y = 15, 225
+        self._lx, self._rx = lx, rx
+        c.create_line(lx, self._top_y, lx, self._bot_y, fill=GREY, width=5)
+        c.create_line(rx, self._top_y, rx, self._bot_y, fill=GREY, width=5)
+        # pre-draw dim rungs
+        n = 10
+        gap = (self._bot_y - self._top_y) / (n + 1)
+        self._rung_ids = []
+        for i in range(n):
+            y = int(self._bot_y - gap * (i + 1))
+            rid = c.create_line(lx, y, rx, y, fill=GREY, width=4, capstyle="round")
+            self._rung_ids.append(rid)
+
+    def _animate(self, step):
+        n = len(self._rung_ids)
+        if step >= n:
+            self._status.config(text="Ready.", fg=GREEN)
+            self.after(350, self._done)
+            return
+        rid = self._rung_ids[step]
+        t = (step + 1) / n          # 0..1
+        # orange → bright white-orange
+        r = 255
+        g = int(140 + t * 115)
+        b = int(t * 200)
+        colour = f"#{r:02x}{min(255,g):02x}{min(255,b):02x}"
+        self._canvas.itemconfig(rid, fill=colour, width=5)
+        # also brighten the rail section
+        rail_col = f"#{r:02x}{min(255, int(70 + t*80)):02x}00"
+        # status dots
+        dots = "." * ((step % 3) + 1)
+        msgs = ["Loading plan data", "Building milestones", "Mapping career path",
+                "Linking wins & KPIs", "Preparing timeline"]
+        self._status.config(text=f"{msgs[step % len(msgs)]}{dots}")
+        self.after(280, lambda: self._animate(step + 1))
+
+    def _done(self):
+        self.grab_release()
+        self.destroy()
+        self.callback()
+
+
+# ── Paste-in JSON import modal (shared by dev plans AND courses) ──────────────
+class PasteJSONModal(tk.Toplevel):
+    """Generic modal for pasting JSON and importing it."""
+    def __init__(self, parent, app, title="Paste JSON", hint="", on_save=None):
+        super().__init__(parent)
+        self.app = app
+        self.on_save = on_save
+        self.configure(bg=BG)
+        self.title(title)
+        self.geometry("700x520")
+        self.resizable(True, True)
+        self.grab_set()
+        self._build(title, hint)
+
+    def _build(self, title, hint):
+        tk.Label(self, text=title, bg=BG, fg=ORANGE,
+                 font=FONT_BOLD_L).pack(pady=(14, 4))
+        if hint:
+            tk.Label(self, text=hint, bg=BG, fg=ORANGE_DIM,
+                     font=FONT_MONO_S, wraplength=650, justify="left").pack(
+                     padx=14, pady=(0, 8), anchor="w")
+        tk.Frame(self, bg=ORANGE3, height=1).pack(fill="x", padx=10)
+
+        self.txt = scrolledtext.ScrolledText(
+            self, bg=BG3, fg=GREEN, insertbackground=GREEN,
+            font=("Consolas", 10), relief="flat", bd=6,
+            selectbackground=ORANGE3, selectforeground=BG, wrap="none")
+        self.txt.pack(fill="both", expand=True, padx=10, pady=8)
+        self.txt.insert("1.0", "")
+
+        self._err = tk.Label(self, text="", bg=BG, fg=RED, font=FONT_MONO_S,
+                              wraplength=650)
+        self._err.pack(padx=10, pady=2)
+
+        row = tk.Frame(self, bg=BG)
+        row.pack(pady=(0, 12))
+        styled_button(row, "✓ Validate & Import", self._do_import, width=22,
+                      bg=ORANGE3, colour=BG).pack(side="left", padx=6)
+        styled_button(row, "Cancel", self.destroy, width=12).pack(side="left", padx=6)
+
+    def _do_import(self):
+        raw = self.txt.get("1.0", "end").strip()
+        if not raw:
+            self._err.config(text="Nothing pasted.")
+            return
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError as e:
+            self._err.config(text=f"JSON parse error: {e}")
+            return
+        if self.on_save:
+            result = self.on_save(data)
+            if result is True:
+                self.destroy()
+            elif isinstance(result, str):
+                self._err.config(text=result)
+
+
+# ── Dev Plan List ─────────────────────────────────────────────────────────────
+class DevPlanListScreen(tk.Frame):
+    def __init__(self, parent, app):
+        super().__init__(parent, bg=BG)
+        self.app = app
+        # Show loading animation then build
+        DevLoadingScreen(app, callback=self._after_load)
+
+    def _after_load(self):
+        self.configure(bg=PANEL)
+        self._build()
+
+    def _build(self):
+        section_title(self, "DEVELOPMENT PLANS")
+        tk.Label(self, text="  Your career roadmap — climb the ladder, log every win.",
+                 bg=PANEL, fg=ORANGE_DIM, font=FONT_MONO_S).pack(anchor="w", padx=10, pady=(0, 4))
+
+        bar = tk.Frame(self, bg=PANEL)
+        bar.pack(fill="x", padx=10, pady=4)
+        styled_button(bar, "+ New Plan",   self._new_plan,   width=13, bg=ORANGE3, colour=BG).pack(side="left", padx=4)
+        styled_button(bar, "Paste JSON",   self._paste_plan, width=13).pack(side="left", padx=4)
+        styled_button(bar, "Open",         self._open_plan,  width=10).pack(side="left", padx=4)
+        styled_button(bar, "Edit JSON",    self._edit_plan,  width=10).pack(side="left", padx=4)
+        styled_button(bar, "Delete",       self._delete_plan,width=10).pack(side="left", padx=4)
+        styled_button(bar, "Refresh",      self._refresh,    width=10).pack(side="right", padx=4)
+
+        cols = ("Name", "Level", "Progress", "Milestones", "Target Date", "Status")
+        self.tree = make_treeview(self, cols, heights=12)
+        self.tree.column("Name",        width=240, stretch=True)
+        self.tree.column("Level",       width=90,  stretch=False)
+        self.tree.column("Progress",    width=80,  stretch=False)
+        self.tree.column("Milestones",  width=100, stretch=False)
+        self.tree.column("Target Date", width=100, stretch=False)
+        self.tree.column("Status",      width=80,  stretch=False)
+        for c in cols:
+            self.tree.heading(c, text=c)
+        self.tree.bind("<Double-1>", lambda e: self._open_plan())
+        self._refresh()
+
+        self._stats = tk.Label(self, text="", bg=PANEL, fg=ORANGE_DIM, font=FONT_MONO_S)
+        self._stats.pack(padx=10, pady=4, anchor="w")
+
+    def _refresh(self):
+        if not hasattr(self, "tree"):
+            return
+        for row in self.tree.get_children():
+            self.tree.delete(row)
+        plans = load_dev_plans()
+        for p in plans:
+            ms = p.get("milestones", [])
+            total = len(ms)
+            done  = sum(1 for m in ms if m.get("status") == "complete")
+            pct   = int(done / total * 100) if total else 0
+            lvl   = f"{p.get('current_level','?')} → {p.get('target_level','?')}"
+            tag   = p.get("status", "active")
+            self.tree.insert("", "end", iid=str(p["id"]), values=(
+                p.get("name", ""),
+                lvl,
+                f"{pct}%",
+                f"{done}/{total}",
+                p.get("target_date", "—")[:10],
+                p.get("status", "active").upper(),
+            ), tags=(tag,))
+        self.tree.tag_configure("active",    foreground=ORANGE)
+        self.tree.tag_configure("completed", foreground=GREEN)
+        self.tree.tag_configure("paused",    foreground=GREY)
+        total = len(plans)
+        active = sum(1 for p in plans if p.get("status") == "active")
+        self._stats.config(text=f"  Plans: {total}   Active: {active}")
+
+    def _selected_id(self):
+        sel = self.tree.selection()
+        if not sel:
+            messagebox.showinfo("Select", "Select a plan first.", parent=self)
+            return None
+        return int(sel[0])
+
+    def _new_plan(self):
+        hint = (
+            'Ask Claude to create a development plan and paste the JSON here.\n'
+            'Minimum required fields: "name", "current_level", "target_level", "milestones" (array).\n'
+            'Each milestone needs: "id", "title", "phase", "description", "status" ("not_started"|"in_progress"|"complete").'
+        )
+        def on_save(data):
+            if not isinstance(data, dict):
+                return "Must be a JSON object {…}"
+            if "name" not in data:
+                return "Missing required field: name"
+            if "milestones" not in data or not isinstance(data["milestones"], list):
+                return "Missing or invalid 'milestones' array"
+            plans = load_dev_plans()
+            data["id"] = max((p["id"] for p in plans), default=0) + 1
+            data.setdefault("status", "active")
+            data.setdefault("created_date", today_str())
+            plans.append(data)
+            save_dev_plans(plans)
+            self._refresh()
+            self.app.status(f"Plan '{data['name']}' imported.")
+            return True
+        PasteJSONModal(self, self.app, title="Paste New Development Plan", hint=hint, on_save=on_save)
+
+    def _paste_plan(self):
+        self._new_plan()
+
+    def _open_plan(self):
+        pid = self._selected_id()
+        if pid is None:
+            return
+        self.app.show_dev_plan(pid)
+
+    def _edit_plan(self):
+        pid = self._selected_id()
+        if pid is None:
+            return
+        plans = load_dev_plans()
+        plan  = next((p for p in plans if p["id"] == pid), None)
+        if not plan:
+            return
+        hint = "Edit the JSON below, then click Validate & Import to save."
+        def on_save(data):
+            if not isinstance(data, dict):
+                return "Must be a JSON object {…}"
+            data["id"] = pid
+            new_plans = [data if p["id"] == pid else p for p in plans]
+            save_dev_plans(new_plans)
+            self._refresh()
+            self.app.status("Plan updated.")
+            return True
+        modal = PasteJSONModal(self, self.app, title="Edit Plan JSON", hint=hint, on_save=on_save)
+        modal.txt.insert("1.0", json.dumps(plan, indent=2))
+
+    def _delete_plan(self):
+        pid = self._selected_id()
+        if pid is None:
+            return
+        if not messagebox.askyesno("Confirm", "Delete this plan?", parent=self):
+            return
+        save_dev_plans([p for p in load_dev_plans() if p["id"] != pid])
+        self._refresh()
+        self.app.status("Plan deleted.")
+
+
+# ── Dev Plan Detail (milestones) ──────────────────────────────────────────────
+class DevPlanDetailScreen(tk.Frame):
+    def __init__(self, parent, app, plan_id):
+        super().__init__(parent, bg=PANEL)
+        self.app      = app
+        self.plan_id  = plan_id
+        self._cur_mid = None
+        self._load_plan()
+        self._build()
+
+    def _load_plan(self):
+        plans = load_dev_plans()
+        self.plan = next((p for p in plans if p["id"] == self.plan_id), {})
+
+    # ── layout ──
+    def _build(self):
+        p = self.plan
+        ms = p.get("milestones", [])
+
+        # ── Header ──
+        hdr = tk.Frame(self, bg=BG3, highlightbackground=ORANGE3, highlightthickness=1)
+        hdr.pack(fill="x", padx=10, pady=(6, 2))
+        styled_button(hdr, "◀ Back", lambda: self.app.show("develop"),
+                      width=9).pack(side="left", padx=8, pady=6)
+        tk.Label(hdr, text=p.get("name", "Development Plan"), bg=BG3,
+                 fg=ORANGE, font=FONT_BOLD_L).pack(side="left", padx=10)
+        lvl_txt = f"  {p.get('current_level','?')} ──▶ {p.get('target_level','?')}  "
+        tk.Label(hdr, text=lvl_txt, bg=ORANGE3, fg=BG,
+                 font=FONT_BOLD).pack(side="left", padx=6, pady=8)
+        tk.Label(hdr, text=f"Target: {p.get('target_date','—')[:10]}",
+                 bg=BG3, fg=ORANGE_DIM, font=FONT_MONO_S).pack(side="right", padx=12)
+
+        # ── Progress bar ──
+        done = sum(1 for m in ms if m.get("status") == "complete")
+        total = len(ms) or 1
+        pct   = int(done / total * 100)
+        pf = tk.Frame(self, bg=BG3, highlightbackground=ORANGE3, highlightthickness=1)
+        pf.pack(fill="x", padx=10, pady=(0, 4))
+        self._prog_canvas = tk.Canvas(pf, bg=BG3, height=28, highlightthickness=0)
+        self._prog_canvas.pack(fill="x", padx=10, pady=5)
+        self._prog_canvas.bind("<Configure>", lambda e: self._draw_progress())
+
+        # ── Stats bar (bottom-anchored) ──
+        stats_bar = tk.Frame(self, bg=BG3, highlightbackground=ORANGE3, highlightthickness=1)
+        stats_bar.pack(side="bottom", fill="x", padx=10, pady=(0, 6))
+        self._stat_labels = {}
+        in_prog = sum(1 for m in ms if m.get("status") == "in_progress")
+        est_rem = sum(m.get("estimated_weeks", 0) for m in ms if m.get("status") != "complete")
+        for key, val in [("Milestones", str(total)),
+                         ("Complete",   str(done)),
+                         ("In Progress",str(in_prog)),
+                         ("Remaining",  str(total - done)),
+                         ("Est Weeks Left", str(est_rem))]:
+            col = tk.Frame(stats_bar, bg=BG3)
+            col.pack(side="left", expand=True, fill="x", ipadx=4, ipady=4)
+            tk.Label(col, text=key,  bg=BG3, fg=ORANGE_DIM, font=FONT_MONO_S).pack()
+            lbl = tk.Label(col, text=val, bg=BG3, fg=ORANGE, font=FONT_BOLD)
+            lbl.pack()
+            self._stat_labels[key] = lbl
+
+        # ── Two-pane ──
+        panes = tk.Frame(self, bg=PANEL)
+        panes.pack(fill="both", expand=True, padx=10, pady=4)
+        panes.columnconfigure(0, weight=1)
+        panes.columnconfigure(1, weight=2)
+        panes.rowconfigure(0, weight=1)
+
+        # Left: milestone list
+        left = tk.Frame(panes, bg=BG3, highlightbackground=ORANGE3, highlightthickness=1)
+        left.grid(row=0, column=0, sticky="nsew", padx=(0, 4))
+        tk.Label(left, text="MILESTONES", bg=BG3, fg=ORANGE, font=FONT_BOLD).pack(pady=(6, 2))
+        tk.Frame(left, bg=ORANGE3, height=1).pack(fill="x", padx=6)
+
+        # Phase filter
+        phases = sorted({m.get("phase","") for m in ms})
+        fbar = tk.Frame(left, bg=BG3)
+        fbar.pack(fill="x", padx=6, pady=(4, 2))
+        tk.Label(fbar, text="Filter:", bg=BG3, fg=ORANGE_DIM, font=FONT_MONO_S).pack(side="left")
+        self._phase_var = tk.StringVar(value="All")
+        phase_cb = ttk.Combobox(fbar, textvariable=self._phase_var,
+                                 values=["All"] + phases,
+                                 state="readonly", width=20, font=FONT_MONO_S)
+        phase_cb.pack(side="left", padx=4)
+        phase_cb.bind("<<ComboboxSelected>>", lambda e: self._refresh_milestones())
+
+        m_cols = ("#", "Title", "Status")
+        self.m_tree = make_treeview(left, m_cols, heights=16)
+        self.m_tree.column("#",      width=28,  stretch=False)
+        self.m_tree.column("Title",  width=180, stretch=True)
+        self.m_tree.column("Status", width=70,  stretch=False)
+        for c in m_cols:
+            self.m_tree.heading(c, text=c)
+        self.m_tree.bind("<<TreeviewSelect>>", self._on_milestone_select)
+
+        # Right: detail panel
+        right = tk.Frame(panes, bg=BG3, highlightbackground=ORANGE3, highlightthickness=1)
+        right.grid(row=0, column=1, sticky="nsew")
+
+        self._detail_title = tk.Label(right, text="Select a milestone", bg=BG3,
+                                       fg=ORANGE, font=FONT_BOLD_L,
+                                       wraplength=380, justify="left", anchor="w")
+        self._detail_title.pack(fill="x", padx=10, pady=(8, 2))
+
+        self._level_badge = tk.Label(right, text="", bg=BG3, fg=ORANGE_DIM, font=FONT_MONO_S)
+        self._level_badge.pack(anchor="w", padx=10, pady=(0, 4))
+        tk.Frame(right, bg=ORANGE3, height=1).pack(fill="x", padx=8)
+
+        tk.Label(right, text="Description:", bg=BG3, fg=ORANGE_DIM,
+                 font=FONT_MONO_S).pack(anchor="w", padx=10, pady=(6, 1))
+        self._detail_desc = scrolledtext.ScrolledText(right, bg=BG2, fg=ORANGE,
+                                                       font=FONT_MONO_S, relief="flat",
+                                                       bd=0, height=5, wrap="word",
+                                                       state="disabled")
+        self._detail_desc.pack(fill="x", padx=10, pady=(0, 4))
+
+        # Skills
+        skills_hdr = tk.Frame(right, bg=BG3)
+        skills_hdr.pack(fill="x", padx=10, pady=(2, 1))
+        tk.Label(skills_hdr, text="Skills:", bg=BG3, fg=ORANGE_DIM,
+                 font=FONT_MONO_S).pack(side="left")
+        self._skills_lbl = tk.Label(right, text="", bg=BG2, fg=ORANGE2,
+                                     font=("Consolas", 9), wraplength=380,
+                                     justify="left", anchor="w")
+        self._skills_lbl.pack(fill="x", padx=10, pady=(0, 4))
+
+        # Resources
+        res_hdr = tk.Frame(right, bg=BG3)
+        res_hdr.pack(fill="x", padx=10, pady=(2, 1))
+        tk.Label(res_hdr, text="Resources:", bg=BG3, fg=ORANGE_DIM,
+                 font=FONT_MONO_S).pack(side="left")
+        styled_button(res_hdr, "Open in Browser", self._open_resource, width=16).pack(side="right")
+        self._res_lb = tk.Listbox(right, bg=BG2, fg=ORANGE2, font=("Consolas", 8),
+                                   selectbackground=ORANGE3, selectforeground=BG,
+                                   relief="flat", bd=0, height=3, activestyle="none")
+        self._res_lb.pack(fill="x", padx=10, pady=(0, 4))
+        self._res_lb.bind("<Double-1>", lambda e: self._open_resource())
+
+        tk.Label(right, text="Notes:", bg=BG3, fg=ORANGE_DIM,
+                 font=FONT_MONO_S).pack(anchor="w", padx=10, pady=(2, 1))
+        self._notes_box = styled_text(right, height=3, width=50)
+        self._notes_box.pack(fill="x", padx=10, pady=(0, 4))
+        self._notes_box.bind("<FocusOut>", lambda e: self._save_notes())
+
+        btn_row = tk.Frame(right, bg=BG3)
+        btn_row.pack(padx=10, pady=4, anchor="w")
+        styled_button(btn_row, "✓ Complete",    self._mark_complete,     width=13,
+                      bg=ORANGE3, colour=BG).pack(side="left", padx=(0, 4))
+        styled_button(btn_row, "▶ In Progress", self._mark_in_progress,  width=14).pack(side="left", padx=4)
+        styled_button(btn_row, "— Reset",       self._mark_not_started,  width=9).pack(side="left", padx=4)
+
+        self._refresh_milestones()
+
+    def _draw_progress(self):
+        c = self._prog_canvas
+        c.delete("all")
+        ms    = self.plan.get("milestones", [])
+        done  = sum(1 for m in ms if m.get("status") == "complete")
+        total = len(ms) or 1
+        pct   = done / total
+        W     = c.winfo_width() or 400
+        H     = 28
+        c.create_rectangle(0, 0, W, H, fill=BG2, outline="")
+        fill_w = int(W * pct)
+        if fill_w > 0:
+            c.create_rectangle(0, 0, fill_w, H, fill=ORANGE3, outline="")
+        c.create_text(W // 2, H // 2, text=f"{int(pct*100)}%  ({done}/{total} milestones)",
+                      fill=WHITE, font=FONT_BOLD)
+
+    def _refresh_milestones(self):
+        if not hasattr(self, "m_tree"):
+            return
+        for row in self.m_tree.get_children():
+            self.m_tree.delete(row)
+        phase_filter = self._phase_var.get() if hasattr(self, "_phase_var") else "All"
+        ms = self.plan.get("milestones", [])
+        for m in ms:
+            if phase_filter != "All" and m.get("phase", "") != phase_filter:
+                continue
+            st  = m.get("status", "not_started")
+            tag = st
+            self.m_tree.insert("", "end", iid=str(m["id"]), values=(
+                m["id"], m.get("title","")[:40], st.replace("_"," ").upper()
+            ), tags=(tag,))
+        self.m_tree.tag_configure("not_started", foreground=GREY)
+        self.m_tree.tag_configure("in_progress", foreground=ORANGE)
+        self.m_tree.tag_configure("complete",    foreground=GREEN)
+        self._draw_progress()
+
+    def _on_milestone_select(self, _=None):
+        sel = self.m_tree.selection()
+        if not sel:
+            return
+        mid = int(sel[0])
+        self._cur_mid = mid
+        m = next((x for x in self.plan.get("milestones",[]) if x["id"] == mid), None)
+        if not m:
+            return
+        self._detail_title.config(text=m.get("title",""))
+        self._level_badge.config(
+            text=f"{m.get('phase','')}   ▪   {m.get('level','')}   ▪   Est {m.get('estimated_weeks',0)} weeks")
+        # Description
+        self._detail_desc.config(state="normal")
+        self._detail_desc.delete("1.0","end")
+        self._detail_desc.insert("1.0", m.get("description",""))
+        self._detail_desc.config(state="disabled")
+        # Skills
+        skills = m.get("skills", [])
+        self._skills_lbl.config(text="  •  ".join(skills) if skills else "—")
+        # Resources
+        self._res_lb.delete(0,"end")
+        for r in m.get("resources", []):
+            self._res_lb.insert("end", r)
+        # Notes
+        self._notes_box.delete("1.0","end")
+        self._notes_box.insert("1.0", m.get("notes",""))
+
+    def _cur_milestone(self):
+        if self._cur_mid is None:
+            messagebox.showinfo("Select", "Select a milestone first.", parent=self)
+            return None
+        return next((m for m in self.plan.get("milestones",[]) if m["id"]==self._cur_mid), None)
+
+    def _set_status(self, new_status):
+        m = self._cur_milestone()
+        if not m:
+            return
+        m["status"] = new_status
+        if new_status == "complete":
+            m["completed_date"] = today_str()
+        self._persist()
+        self._refresh_milestones()
+        self.app.status(f"'{m['title'][:40]}' → {new_status.replace('_',' ')}")
+
+    def _mark_complete(self):
+        m = self._cur_milestone()
+        if not m:
+            return
+        m["status"] = "complete"
+        m["completed_date"] = today_str()
+        self._persist()
+        self._refresh_milestones()
+        title = m.get("title","")
+        self.app.status(f"Milestone complete: {title[:40]}")
+        # ── Log a Win ──
+        if messagebox.askyesno("Log a Win?",
+                f"Log completing:\n'{title}'\nas a Win in Wins & Achievements?",
+                parent=self):
+            wins = load_wins()
+            new_id = max((w.get("id",0) for w in wins), default=0) + 1
+            wins.append({
+                "id":          new_id,
+                "date":        today_str(),
+                "category":    "Professional Development",
+                "description": f"Completed SOC development milestone: {title}",
+                "impact":      f"Progress towards {self.plan.get('target_level','L3')} SOC Analyst role — "
+                               f"{m.get('level','')} track"
+            })
+            save_wins(wins)
+            append_daily_log(f"[dev milestone] {title}")
+            index_memory("dev_milestone", title)
+            # ── Auto-log KPI if a SOC/Development metric exists ──
+            kpi_data = load_kpis()
+            for metric in kpi_data.get("metrics", []):
+                mname = metric.get("name","").lower()
+                if "soc" in mname or "development" in mname or "career" in mname:
+                    ms    = self.plan.get("milestones",[])
+                    done  = sum(1 for x in ms if x.get("status")=="complete")
+                    total = len(ms) or 1
+                    entry = {
+                        "id":        max((e.get("id",0) for e in kpi_data.get("entries",[])), default=0)+1,
+                        "metric_id": metric["id"],
+                        "date":      today_str(),
+                        "value":     round(done/total*100,1),
+                        "note":      f"Milestone complete: {title[:50]}"
+                    }
+                    kpi_data["entries"].append(entry)
+                    save_kpis(kpi_data)
+                    break
+            self.app.status(f"Win logged + milestone complete!")
+
+    def _mark_in_progress(self):
+        self._set_status("in_progress")
+
+    def _mark_not_started(self):
+        m = self._cur_milestone()
+        if not m:
+            return
+        m["status"] = "not_started"
+        m["completed_date"] = None
+        self._persist()
+        self._refresh_milestones()
+        self.app.status(f"Milestone reset.")
+
+    def _save_notes(self):
+        m = self._cur_milestone()
+        if not m:
+            return
+        m["notes"] = self._notes_box.get("1.0","end").strip()
+        self._persist()
+
+    def _open_resource(self):
+        sel = self._res_lb.curselection()
+        if not sel:
+            messagebox.showinfo("Select", "Select a resource first.", parent=self)
+            return
+        url = self._res_lb.get(sel[0])
+        if url.startswith("http"):
+            webbrowser.open(url)
+
+    def _persist(self):
+        plans = load_dev_plans()
+        new_plans = [self.plan if p["id"] == self.plan_id else p for p in plans]
+        save_dev_plans(new_plans)
+        # update stats
+        ms    = self.plan.get("milestones",[])
+        done  = sum(1 for m in ms if m.get("status")=="complete")
+        in_p  = sum(1 for m in ms if m.get("status")=="in_progress")
+        total = len(ms) or 1
+        rem   = total - done
+        est_r = sum(m.get("estimated_weeks",0) for m in ms if m.get("status")!="complete")
+        if hasattr(self, "_stat_labels"):
+            self._stat_labels["Milestones"].config(text=str(total))
+            self._stat_labels["Complete"].config(text=str(done))
+            self._stat_labels["In Progress"].config(text=str(in_p))
+            self._stat_labels["Remaining"].config(text=str(rem))
+            self._stat_labels["Est Weeks Left"].config(text=str(est_r))
+
+
 class CommandCenterApp(tk.Tk):
     def __init__(self):
         super().__init__()
@@ -2351,10 +3083,12 @@ class CommandCenterApp(tk.Tk):
             pass
 
     def _seed_defaults(self):
-        """Auto-populate SC-200 course on first launch if no programs exist."""
+        """Auto-populate defaults on first launch."""
         if not PROGRAMS_JSON.exists() or not load_programs():
             prog = get_program_template("SC-200", "certification")
             save_programs([prog])
+        if not DEV_PLANS_JSON.exists() or not load_dev_plans():
+            save_dev_plans([_soc_dev_plan()])
 
     def _restore_window_state(self):
         state = load_window_state()
@@ -2380,6 +3114,7 @@ class CommandCenterApp(tk.Tk):
         self.bind("<Control-k>",      lambda e: self.show("kpis"))
         self.bind("<Control-i>",      lambda e: self.show("incidents"))
         self.bind("<Control-r>",      lambda e: self.show("courses"))
+        self.bind("<Control-g>",      lambda e: self.show("develop"))
         self.bind("<Control-n>",      lambda e: self._quick_focus())
         self.bind("<Escape>",         lambda e: self.show("dashboard"))
 
@@ -2459,9 +3194,10 @@ class CommandCenterApp(tk.Tk):
             ("log",        "✎  Daily Log"),
             ("search",     "⌕  Search"),
             ("courses",    "◉  Courses"),
+            ("develop",    "▲  Development"),
             ("wins",       "★  Wins"),
             ("planner",    "⬛  Weekly Plan"),
-            ("kpis",       "▲  KPI Tracker"),
+            ("kpis",       "◈  KPI Tracker"),
             ("incidents",  "⚠  Incidents"),
         ]
         for key, label in nav_items:
@@ -2523,6 +3259,7 @@ class CommandCenterApp(tk.Tk):
             "memory":    MemoryScreen,
             "decisions": DecisionScreen,
             "tasks":     TaskScreen,
+            "develop":   DevPlanListScreen,
             "log":       DailyLogScreen,
             "search":    SearchScreen,
             "courses":   CoursesScreen,
@@ -2534,6 +3271,16 @@ class CommandCenterApp(tk.Tk):
         cls = screen_map.get(name)
         if cls:
             cls(self.content, self).pack(fill="both", expand=True)
+        self._update_badge()
+
+    def show_dev_plan(self, plan_id: int):
+        self._current_screen = "develop"
+        for k, btn in self.nav_buttons.items():
+            btn.config(bg=ORANGE3 if k == "develop" else BG2,
+                       fg=BG if k == "develop" else ORANGE)
+        for w in self.content.winfo_children():
+            w.destroy()
+        DevPlanDetailScreen(self.content, self, plan_id).pack(fill="both", expand=True)
         self._update_badge()
 
     def show_program(self, program_id: int):
