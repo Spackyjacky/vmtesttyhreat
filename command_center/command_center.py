@@ -1374,10 +1374,10 @@ class CoursesScreen(tk.Frame):
         for c in cols:
             self.tree.heading(c, text=c)
         self.tree.bind("<Double-1>", lambda e: self._open_program())
-        self._refresh()
 
         self.stats_label = tk.Label(self, text="", bg=PANEL, fg=ORANGE_DIM, font=FONT_MONO_S)
         self.stats_label.pack(padx=10, pady=4, anchor="w")
+        self._refresh()
 
     def _compute_progress(self, program):
         mods = program.get("modules", [])
@@ -3083,12 +3083,30 @@ class CommandCenterApp(tk.Tk):
             pass
 
     def _seed_defaults(self):
-        """Auto-populate defaults on first launch."""
-        if not PROGRAMS_JSON.exists() or not load_programs():
+        """Ensure default data is always present, regardless of existing files."""
+        # ── SC-200 course: add if not already present ──
+        programs = load_programs()
+        has_sc200 = any(
+            "sc-200" in p.get("name","").lower() or "sc200" in p.get("name","").lower()
+            for p in programs
+        )
+        if not has_sc200:
             prog = get_program_template("SC-200", "certification")
-            save_programs([prog])
-        if not DEV_PLANS_JSON.exists() or not load_dev_plans():
-            save_dev_plans([_soc_dev_plan()])
+            prog["id"] = max((p.get("id", 0) for p in programs), default=0) + 1
+            programs.append(prog)
+            save_programs(programs)
+
+        # ── SOC dev plan: add if not already present ──
+        dev_plans = load_dev_plans()
+        has_soc = any(
+            "soc" in p.get("name","").lower() or "l1" in p.get("name","").lower()
+            for p in dev_plans
+        )
+        if not has_soc:
+            plan = _soc_dev_plan()
+            plan["id"] = max((p.get("id", 0) for p in dev_plans), default=0) + 1
+            dev_plans.append(plan)
+            save_dev_plans(dev_plans)
 
     def _restore_window_state(self):
         state = load_window_state()
