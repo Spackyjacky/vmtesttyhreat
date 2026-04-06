@@ -80,6 +80,7 @@ class Config:
     CLIPBOARD_CLEAR_DELAY  = 0  # seconds after copy; 0 = disabled
     IOC_REFRESH_INTERVAL   = 3  # seconds between IOC panel auto-refreshes
     TIMESTAMP_FORMAT       = "[%Y-%m-%d %H:%M:%S]"
+    DAILY_STATS_FILE       = "daily_stats.json"
 
 
 # --------------------- System Theme Detection ---------------------
@@ -319,6 +320,9 @@ class SOCNotesApp:
         self._spell_check_on   = False
         self._spell_check_job  = None
         self.escalation_template = ""  # loaded from settings
+        self._daily_stats      = {}   # {YYYY-MM-DD: {metric: int, ...}}
+        self._dashboard_win    = None  # performance dashboard Toplevel
+        self._dashboard_job    = None  # after() handle for auto-refresh
         
         # IOC patterns for better detection
         self.ioc_patterns = {
@@ -443,6 +447,8 @@ Client     : {client}
             else:
                 self.escalation_template = self._DEFAULT_ESCALATION_TEMPLATE
 
+            self._load_daily_stats()
+
             # Apply system theme if enabled
             if self.config.FOLLOW_SYSTEM_THEME:
                 self.config.DARK_MODE = get_system_theme()
@@ -487,6 +493,7 @@ Client     : {client}
             }
             with open(self.config.APP_DATA_FILE, 'w', encoding='utf-8') as f:
                 json.dump(settings, f, indent=2)
+            self._save_daily_stats()
         except Exception as e:
             print(f"Error saving settings: {e}")
 
@@ -649,6 +656,10 @@ Client     : {client}
         view_menu.add_separator()
         view_menu.add_command(label="🔴 Toggle Redaction Mode", command=self.toggle_redaction)
         view_menu.add_command(label="🔒 Lock Session", command=self.lock_session, accelerator="Ctrl+L")
+        view_menu.add_separator()
+        view_menu.add_command(label="📊 Performance Dashboard",
+                              command=self.show_performance_dashboard,
+                              accelerator="Ctrl+Shift+M")
         if SPELL_CHECK_AVAILABLE:
             view_menu.add_command(label="Toggle Spell Check", command=self.toggle_spell_check,
                                   accelerator="Ctrl+Shift+P")
@@ -935,6 +946,7 @@ Client     : {client}
         self.root.bind('<Alt-j>',      lambda e: self.format_json())
         if SPELL_CHECK_AVAILABLE:
             self.root.bind('<Control-Shift-P>', lambda e: self.toggle_spell_check())
+        self.root.bind('<Control-Shift-M>', lambda e: self.show_performance_dashboard())
         # ASCII Quick Menu keybindings
         if self.ascii_menu_integration:
             self.ascii_menu_integration.bind_keys()
@@ -4927,6 +4939,52 @@ Client     : {client}
 
         return warnings
 
+    # --------------------- Daily Stats Persistence ---------------------
+
+    def _load_daily_stats(self):
+        """Load per-day cumulative stats from daily_stats.json."""
+        try:
+            if os.path.exists(self.config.DAILY_STATS_FILE):
+                with open(self.config.DAILY_STATS_FILE, 'r', encoding='utf-8') as f:
+                    self._daily_stats = json.load(f)
+        except Exception as e:
+            print(f"Error loading daily stats: {e}")
+            self._daily_stats = {}
+
+    def _save_daily_stats(self):
+        """Merge today's mileage into daily_stats.json and keep last 30 days."""
+        from datetime import datetime as _dts, timedelta as _td
+        try:
+            today = _dts.now().strftime('%Y-%m-%d')
+            # Calculate session minutes from session_start
+            session_minutes = 0
+            start_str = self._mileage.get('session_start', '')
+            if start_str:
+                try:
+                    elapsed = _dts.now() - _dts.fromisoformat(start_str)
+                    session_minutes = int(elapsed.total_seconds() / 60)
+                except Exception:
+                    pass
+            today_data = {
+                'copies':               self._mileage.get('copies', 0),
+                'defangs':              self._mileage.get('defangs', 0),
+                'iocs_extracted':       self._mileage.get('iocs_extracted', 0),
+                'near_misses':          self._mileage.get('near_misses', 0),
+                'contamination_checks': self._mileage.get('contamination_checks', 0),
+                'breakglass_events':    self._mileage.get('breakglass_events', 0),
+                'session_minutes':      session_minutes,
+            }
+            self._daily_stats[today] = today_data
+            # Prune entries older than 30 days
+            cutoff = (_dts.now() - _td(days=30)).strftime('%Y-%m-%d')
+            self._daily_stats = {
+                k: v for k, v in self._daily_stats.items() if k >= cutoff
+            }
+            with open(self.config.DAILY_STATS_FILE, 'w', encoding='utf-8') as f:
+                json.dump(self._daily_stats, f, indent=2)
+        except Exception as e:
+            print(f"Error saving daily stats: {e}")
+
     # --------------------- Session Mileage Tab ---------------------
 
     def create_mileage_tab(self, parent):
@@ -5020,6 +5078,431 @@ Client     : {client}
                    command=reset_mileage).pack(side="left")
         ttk.Label(btn_frame, text="  Clears all counters and the action log.",
                   foreground="grey", font=("Arial", 8)).pack(side="left")
+
+    # --------------------- Analyst Performance Dashboard ---------------------
+
+    def show_performance_dashboard(self):
+        """Open (or raise) the analyst performance dashboard window."""
+        if self._dashboard_win and self._dashboard_win.winfo_exists():
+            self._dashboard_win.lift()
+            self._dashboard_win.focus_force()
+            return
+
+        win = tk.Toplevel(self.root)
+        win.title("Analyst Performance Dashboard")
+        win.geometry("900x660")
+        win.configure(bg="#1e1e1e")
+        win.minsize(720, 520)
+        self._dashboard_win = win
+
+        # Cancel refresh timer when window closes
+        def _on_close():
+            if self._dashboard_job:
+                try:
+                    self.root.after_cancel(self._dashboard_job)
+                except Exception:
+                    pass
+                self._dashboard_job = None
+            self._dashboard_win = None
+            win.destroy()
+
+        win.protocol("WM_DELETE_WINDOW", _on_close)
+
+        # ── Header ────────────────────────────────────────────────────────────
+        hdr = tk.Frame(win, bg="#0d0d0d", pady=6)
+        hdr.pack(fill="x")
+        tk.Label(hdr, text="📊  Analyst Performance Dashboard",
+                 bg="#0d0d0d", fg="#00bfff",
+                 font=("Consolas", 13, "bold")).pack(side="left", padx=12)
+        self._dash_updated_label = tk.Label(hdr, text="", bg="#0d0d0d",
+                                            fg="#888888", font=("Consolas", 8))
+        self._dash_updated_label.pack(side="right", padx=8)
+        tk.Button(hdr, text="⟳ Refresh", bg="#1e3a5f", fg="#00bfff",
+                  font=("Consolas", 9), relief="flat", padx=8,
+                  command=self._refresh_dashboard).pack(side="right", padx=4)
+
+        # ── Scrollable body ───────────────────────────────────────────────────
+        body_outer = tk.Frame(win, bg="#1e1e1e")
+        body_outer.pack(fill="both", expand=True)
+        body_canvas = tk.Canvas(body_outer, bg="#1e1e1e", highlightthickness=0)
+        vsb = ttk.Scrollbar(body_outer, orient="vertical",
+                            command=body_canvas.yview)
+        body_canvas.configure(yscrollcommand=vsb.set)
+        vsb.pack(side="right", fill="y")
+        body_canvas.pack(side="left", fill="both", expand=True)
+        body = tk.Frame(body_canvas, bg="#1e1e1e")
+        _body_win = body_canvas.create_window((0, 0), window=body, anchor="nw")
+
+        def _on_body_configure(e):
+            body_canvas.configure(scrollregion=body_canvas.bbox("all"))
+
+        def _on_canvas_resize(e):
+            body_canvas.itemconfig(_body_win, width=e.width)
+
+        body.bind("<Configure>", _on_body_configure)
+        body_canvas.bind("<Configure>", _on_canvas_resize)
+
+        # mousewheel
+        def _on_wheel(e):
+            body_canvas.yview_scroll(int(-1 * (e.delta / 120)), "units")
+
+        body_canvas.bind_all("<MouseWheel>", _on_wheel)
+        win.bind("<Destroy>", lambda e: body_canvas.unbind_all("<MouseWheel>"))
+
+        # ── Row 1: stat cards + open incidents ────────────────────────────────
+        row1 = tk.Frame(body, bg="#1e1e1e")
+        row1.pack(fill="x", padx=10, pady=(10, 4))
+
+        stats_col = tk.Frame(row1, bg="#1e1e1e")
+        stats_col.pack(side="left", fill="both", expand=True)
+        self._build_dashboard_stats(stats_col)
+
+        incidents_col = tk.Frame(row1, bg="#242424", bd=1, relief="solid")
+        incidents_col.pack(side="right", fill="both", padx=(8, 0),
+                           ipadx=6, ipady=4, expand=False)
+        incidents_col.configure(width=230)
+        self._build_dashboard_incidents(incidents_col)
+
+        # ── Row 2: hourly activity chart ──────────────────────────────────────
+        row2 = tk.Frame(body, bg="#1e1e1e")
+        row2.pack(fill="x", padx=10, pady=4)
+        self._build_dashboard_hourly(row2)
+
+        # ── Row 3: recent activity + 7-day trend ─────────────────────────────
+        row3 = tk.Frame(body, bg="#1e1e1e")
+        row3.pack(fill="x", padx=10, pady=4)
+        activity_col = tk.Frame(row3, bg="#1e1e1e")
+        activity_col.pack(side="left", fill="both", expand=True)
+        self._build_dashboard_activity(activity_col)
+        weekly_col = tk.Frame(row3, bg="#1e1e1e")
+        weekly_col.pack(side="right", fill="both", padx=(8, 0), expand=True)
+        self._build_dashboard_weekly(weekly_col)
+
+        # ── Row 4: mistake memory ─────────────────────────────────────────────
+        row4 = tk.Frame(body, bg="#1e1e1e")
+        row4.pack(fill="x", padx=10, pady=(4, 12))
+        self._build_dashboard_mistakes(row4)
+
+        # Kick off auto-refresh
+        self._schedule_dashboard_refresh()
+
+    def _schedule_dashboard_refresh(self):
+        """Reschedule the 10-second auto-refresh if the dashboard window is open."""
+        if self._dashboard_win and self._dashboard_win.winfo_exists():
+            self._dashboard_job = self.root.after(10000, self._refresh_dashboard)
+
+    def _refresh_dashboard(self):
+        """Rebuild the dashboard contents in-place."""
+        self._dashboard_job = None
+        if not (self._dashboard_win and self._dashboard_win.winfo_exists()):
+            return
+        # Tear down and rebuild — simplest correctness guarantee
+        win = self._dashboard_win
+        win.destroy()
+        self._dashboard_win = None
+        self.show_performance_dashboard()
+
+    # ── Stat cards ────────────────────────────────────────────────────────────
+
+    def _make_stat_card(self, parent, label, value, colour="#00bfff"):
+        """Small metric card: big coloured number + grey label underneath."""
+        card = tk.Frame(parent, bg="#242424", bd=1, relief="solid",
+                        padx=12, pady=8)
+        tk.Label(card, text=str(value), font=("Consolas", 20, "bold"),
+                 fg=colour, bg="#242424").pack()
+        tk.Label(card, text=label, font=("Consolas", 8),
+                 fg="#888888", bg="#242424").pack()
+        return card
+
+    def _build_dashboard_stats(self, parent):
+        from datetime import datetime as _dts
+        tk.Label(parent, text="SESSION", bg="#1e1e1e", fg="#666666",
+                 font=("Consolas", 8, "bold")).pack(anchor="w")
+
+        start_str = self._mileage.get('session_start', '')
+        session_age = "—"
+        if start_str:
+            try:
+                elapsed = _dts.now() - _dts.fromisoformat(start_str)
+                h = int(elapsed.total_seconds()) // 3600
+                m = (int(elapsed.total_seconds()) % 3600) // 60
+                session_age = f"{h}h {m}m" if h else f"{m}m"
+            except Exception:
+                pass
+
+        cards_frame = tk.Frame(parent, bg="#1e1e1e")
+        cards_frame.pack(fill="x")
+
+        metrics = [
+            ("Session Time",    session_age,                                    "#aaddff"),
+            ("Safe Copies",     self._mileage.get('copies', 0),                 "#44dd88"),
+            ("Defangs",         self._mileage.get('defangs', 0),                "#00bfff"),
+            ("IOCs Extracted",  self._mileage.get('iocs_extracted', 0),         "#ffcc44"),
+            ("Near-misses",     self._mileage.get('near_misses', 0),            "#ff7744"),
+            ("Breakglass",      self._mileage.get('breakglass_events', 0),      "#ff4444"),
+        ]
+        for i, (label, value, colour) in enumerate(metrics):
+            card = self._make_stat_card(cards_frame, label, value, colour)
+            card.grid(row=0, column=i, padx=4, pady=2, sticky="nsew")
+        for i in range(len(metrics)):
+            cards_frame.columnconfigure(i, weight=1)
+
+    # ── Open incidents board ──────────────────────────────────────────────────
+
+    def _build_dashboard_incidents(self, parent):
+        from datetime import datetime as _dts
+        tk.Label(parent, text="OPEN INCIDENTS", bg="#242424", fg="#666666",
+                 font=("Consolas", 8, "bold")).pack(anchor="w", padx=6, pady=(4, 2))
+
+        if not self._tab_timers:
+            tk.Label(parent, text="No open incidents", bg="#242424",
+                     fg="#555555", font=("Consolas", 9)).pack(padx=6, pady=8)
+            return
+
+        now = _dts.now()
+        rows = []
+        for frame, started in list(self._tab_timers.items()):
+            try:
+                title = self.notebook.tab(frame, "text")
+            except Exception:
+                continue
+            elapsed_sec = int((now - started).total_seconds())
+            h = elapsed_sec // 3600
+            m = (elapsed_sec % 3600) // 60
+            s = elapsed_sec % 60
+            if h:
+                elapsed_str = f"{h}h {m:02d}m"
+                colour = "#ff9944"
+            elif m >= 30:
+                elapsed_str = f"{m}m {s:02d}s"
+                colour = "#ff6644"
+            elif m >= 15:
+                elapsed_str = f"{m}m {s:02d}s"
+                colour = "#ffaa44"
+            else:
+                elapsed_str = f"{m}m {s:02d}s"
+                colour = "#88aa88"
+            rows.append((elapsed_sec, title, elapsed_str, colour, frame))
+
+        rows.sort(key=lambda x: x[0], reverse=True)
+
+        for _, title, elapsed_str, colour, frame in rows:
+            row_f = tk.Frame(parent, bg="#242424", cursor="hand2")
+            row_f.pack(fill="x", padx=6, pady=1)
+            # colour dot
+            tk.Label(row_f, text="●", fg=colour, bg="#242424",
+                     font=("Consolas", 9)).pack(side="left")
+            # truncate long titles
+            short = (title[:22] + "…") if len(title) > 23 else title
+            tk.Label(row_f, text=short, fg="#cccccc", bg="#242424",
+                     font=("Consolas", 9), anchor="w").pack(side="left", fill="x", expand=True)
+            tk.Label(row_f, text=elapsed_str, fg=colour, bg="#242424",
+                     font=("Consolas", 9, "bold")).pack(side="right")
+            # click → switch to tab
+            _f = frame
+            row_f.bind("<Button-1>", lambda e, f=_f: self.notebook.select(f))
+            for child in row_f.winfo_children():
+                child.bind("<Button-1>", lambda e, f=_f: self.notebook.select(f))
+
+    # ── Hourly activity chart ─────────────────────────────────────────────────
+
+    def _build_dashboard_hourly(self, parent):
+        from collections import Counter
+        from datetime import datetime as _dts
+
+        section = tk.Frame(parent, bg="#1e1e1e")
+        section.pack(fill="x")
+        tk.Label(section, text="ACTIVITY BY HOUR  (current session)",
+                 bg="#1e1e1e", fg="#666666", font=("Consolas", 8, "bold")).pack(anchor="w")
+
+        canvas_h = 90
+        c = tk.Canvas(section, bg="#141414", height=canvas_h,
+                      highlightthickness=1, highlightbackground="#333333")
+        c.pack(fill="x", pady=(2, 0))
+
+        counts = Counter()
+        for entry in self._action_log:
+            try:
+                hour = int(entry['time'][:2])
+                counts[hour] += 1
+            except (ValueError, KeyError):
+                pass
+
+        current_hour = _dts.now().hour
+
+        def _draw(event=None):
+            c.delete("all")
+            w = c.winfo_width()
+            if w < 10:
+                return
+
+            if not counts:
+                c.create_text(w // 2, canvas_h // 2,
+                              text="No actions logged yet",
+                              fill="#444444", font=("Consolas", 9))
+                return
+
+            hours_present = sorted(counts.keys())
+            max_count = max(counts.values()) or 1
+            n = len(hours_present)
+            bar_area_w = w - 20  # 10px padding each side
+            bar_w = max(8, bar_area_w // n - 4)
+            bar_max_h = canvas_h - 28  # leave room for labels top + bottom
+            x_start = 10 + (bar_area_w - n * (bar_w + 4)) // 2
+
+            for i, hour in enumerate(hours_present):
+                x = x_start + i * (bar_w + 4)
+                bar_h = int(bar_max_h * counts[hour] / max_count)
+                y_top = canvas_h - 16 - bar_h
+                y_bot = canvas_h - 16
+                fill = "#00bfff" if hour == current_hour else "#2255aa"
+                c.create_rectangle(x, y_top, x + bar_w, y_bot,
+                                   fill=fill, outline="")
+                # count label above bar
+                c.create_text(x + bar_w // 2, y_top - 2,
+                              text=str(counts[hour]),
+                              fill="#aaaaaa", font=("Consolas", 7),
+                              anchor="s")
+                # hour label below
+                c.create_text(x + bar_w // 2, y_bot + 2,
+                              text=f"{hour:02d}",
+                              fill="#666666", font=("Consolas", 7),
+                              anchor="n")
+
+        c.bind("<Configure>", _draw)
+        c.after(50, _draw)
+
+    # ── Recent activity log ───────────────────────────────────────────────────
+
+    def _build_dashboard_activity(self, parent):
+        tk.Label(parent, text="RECENT ACTIVITY  (last 15)",
+                 bg="#1e1e1e", fg="#666666", font=("Consolas", 8, "bold")).pack(anchor="w")
+
+        frame = tk.Frame(parent, bg="#141414", bd=1, relief="solid")
+        frame.pack(fill="both", expand=True, pady=(2, 0))
+
+        tv = ttk.Treeview(frame, columns=("time", "action", "client", "detail"),
+                          show="headings", height=8)
+        tv.heading("time",   text="Time")
+        tv.heading("action", text="Action")
+        tv.heading("client", text="Client")
+        tv.heading("detail", text="Detail")
+        tv.column("time",   width=55,  stretch=False)
+        tv.column("action", width=120, stretch=False)
+        tv.column("client", width=80,  stretch=False)
+        tv.column("detail", width=200, stretch=True)
+
+        tv.tag_configure("warn",     foreground="#cc6600")
+        tv.tag_configure("critical", foreground="#cc0000")
+        tv.tag_configure("normal",   foreground="#aaaaaa")
+
+        warn_actions = {'contamination_found', 'near_miss_defang', 'defang'}
+        crit_actions = {'breakglass_triggered'}
+
+        recent = list(reversed(self._action_log[-15:]))
+        for entry in recent:
+            action = entry.get('action', '')
+            tag = ("critical" if action in crit_actions
+                   else "warn" if action in warn_actions
+                   else "normal")
+            tv.insert("", "end",
+                      values=(entry.get('time', ''),
+                               action,
+                               entry.get('client', ''),
+                               entry.get('detail', '')),
+                      tags=(tag,))
+
+        sb = ttk.Scrollbar(frame, orient="vertical", command=tv.yview)
+        tv.configure(yscrollcommand=sb.set)
+        sb.pack(side="right", fill="y")
+        tv.pack(side="left", fill="both", expand=True)
+
+    # ── 7-day trend chart ─────────────────────────────────────────────────────
+
+    def _build_dashboard_weekly(self, parent):
+        from datetime import datetime as _dts, timedelta as _td
+
+        tk.Label(parent, text="7-DAY TREND  (safe copies)",
+                 bg="#1e1e1e", fg="#666666", font=("Consolas", 8, "bold")).pack(anchor="w")
+
+        canvas_h = 120
+        c = tk.Canvas(parent, bg="#141414", height=canvas_h,
+                      highlightthickness=1, highlightbackground="#333333")
+        c.pack(fill="x", pady=(2, 0))
+
+        today = _dts.now().date()
+        days = [today - _td(days=i) for i in range(6, -1, -1)]
+
+        def _draw(event=None):
+            c.delete("all")
+            w = c.winfo_width()
+            if w < 10:
+                return
+
+            values = [self._daily_stats.get(d.strftime('%Y-%m-%d'), {}).get('copies', 0)
+                      for d in days]
+            max_val = max(values) if any(values) else 1
+            n = 7
+            pad = 10
+            bar_area_w = w - 2 * pad
+            bar_w = max(12, bar_area_w // n - 6)
+            bar_max_h = canvas_h - 30
+            x_start = pad + (bar_area_w - n * (bar_w + 6)) // 2
+
+            for i, (day, val) in enumerate(zip(days, values)):
+                x = x_start + i * (bar_w + 6)
+                bar_h = int(bar_max_h * val / max_val) if max_val else 0
+                y_bot = canvas_h - 16
+                y_top = y_bot - max(bar_h, 2)
+                is_today = (day == today)
+                fill = "#00bfff" if is_today else "#2255aa"
+                c.create_rectangle(x, y_top, x + bar_w, y_bot,
+                                   fill=fill, outline="")
+                if val:
+                    c.create_text(x + bar_w // 2, y_top - 2,
+                                  text=str(val), fill="#aaaaaa",
+                                  font=("Consolas", 7), anchor="s")
+                label = day.strftime('%a') if not is_today else "Today"
+                c.create_text(x + bar_w // 2, y_bot + 2,
+                              text=label, fill="#666666",
+                              font=("Consolas", 7), anchor="n")
+
+        c.bind("<Configure>", _draw)
+        c.after(50, _draw)
+
+    # ── Mistake memory (expanded) ─────────────────────────────────────────────
+
+    def _build_dashboard_mistakes(self, parent):
+        tk.Label(parent, text="MISTAKE MEMORY",
+                 bg="#1e1e1e", fg="#666666", font=("Consolas", 8, "bold")).pack(anchor="w")
+
+        frame = tk.Frame(parent, bg="#1a0e00", bd=1, relief="solid")
+        frame.pack(fill="x", pady=(2, 0))
+
+        warnings = self._analyse_mistake_patterns()
+        nm = self._mileage.get('near_misses', 0)
+        cont = self._mileage.get('contamination_checks', 0)
+
+        summary = tk.Frame(frame, bg="#1a0e00")
+        summary.pack(fill="x", padx=8, pady=(6, 2))
+        tk.Label(summary, text=f"Near-misses this session: {nm}",
+                 bg="#1a0e00",
+                 fg=("#ff7744" if nm > 0 else "#55aa55"),
+                 font=("Consolas", 9)).pack(side="left", padx=(0, 20))
+        tk.Label(summary, text=f"Contamination checks: {cont}",
+                 bg="#1a0e00", fg="#888888",
+                 font=("Consolas", 9)).pack(side="left")
+
+        if warnings:
+            for w in warnings:
+                tk.Label(frame, text=f"  ⚠  {w}", bg="#1a0e00",
+                         fg="#cc6600", font=("Consolas", 9),
+                         wraplength=820, justify="left", anchor="w").pack(
+                    fill="x", padx=8, pady=2)
+        else:
+            tk.Label(frame, text="  ✓  No recurring patterns detected this session.",
+                     bg="#1a0e00", fg="#44aa66",
+                     font=("Consolas", 9)).pack(anchor="w", padx=8, pady=4)
 
     # --------------------- Theme Presets ---------------------
 
@@ -6337,6 +6820,7 @@ Exported: {_dt.now().strftime('%Y-%m-%d %H:%M')}</p>
             except Exception:
                 pass
         self._log_action('session_end', 'App closed')
+        self._save_daily_stats()
         self.save_settings()  # persist mileage on close
         self.save_session()
         unsaved_tabs = []
