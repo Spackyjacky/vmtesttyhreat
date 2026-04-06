@@ -13,6 +13,7 @@ import json
 from datetime import datetime
 import csv
 import hashlib
+import uuid
 import base64
 import platform
 import subprocess
@@ -73,9 +74,12 @@ class Config:
         'virustotal': '',
         'abuseipdb': ''
     }
-    LOCK_PASSWORD = "unlock"
+    LOCK_PASSWORD = ""          # stored as sha256 hex; empty = no lock
+    LOCK_SALT     = ""          # per-install random salt
     CLIENTS = ["Client Alpha", "Client Beta", "Client Gamma"]
-    CLIPBOARD_CLEAR_DELAY = 0   # seconds after copy; 0 = disabled
+    CLIPBOARD_CLEAR_DELAY  = 0  # seconds after copy; 0 = disabled
+    IOC_REFRESH_INTERVAL   = 3  # seconds between IOC panel auto-refreshes
+    TIMESTAMP_FORMAT       = "[%Y-%m-%d %H:%M:%S]"
 
 
 # --------------------- System Theme Detection ---------------------
@@ -309,6 +313,12 @@ class SOCNotesApp:
         self._redaction_on     = False
         self._clipboard_clear_job = None
         self._ioc_panel_win    = None
+        self._ioc_panel_paused = False
+        self._find_history     = []   # recent search terms
+        self._replace_history  = []   # recent replace terms
+        self._spell_check_on   = False
+        self._spell_check_job  = None
+        self.escalation_template = ""  # loaded from settings
         
         # IOC patterns for better detection
         self.ioc_patterns = {
@@ -355,11 +365,38 @@ class SOCNotesApp:
         self.auto_save()
 
     # --------------------- Settings ---------------------
+    # Default escalation template (used when no custom one is saved)
+    _DEFAULT_ESCALATION_TEMPLATE = """\
+=== ESCALATION NOTE ===
+Date       : {date}
+Analyst    : {analyst}
+Incident ID: INC-
+Severity   : {severity}
+Client     : {client}
+
+--- REASON FOR ESCALATION ---
+
+--- ESCALATED TO ---
+
+--- INITIAL FINDINGS (see closure note below) ---
+────────────────────────────────────────────────
+{first_note}
+────────────────────────────────────────────────
+
+--- KEY IOCs ---
+{iocs}
+"""
+
     def load_settings(self):
+        _bad_settings = False
         try:
             if os.path.exists(self.config.APP_DATA_FILE):
                 with open(self.config.APP_DATA_FILE, 'r', encoding='utf-8') as f:
-                    settings = json.load(f)
+                    try:
+                        settings = json.load(f)
+                    except json.JSONDecodeError:
+                        _bad_settings = True
+                        settings = {}
                     self.config.DARK_MODE = settings.get('dark_mode', False)
                     self.config.FOLLOW_SYSTEM_THEME = settings.get('follow_system_theme', False)
                     self.config.LINE_NUMBERS = settings.get('line_numbers', True)
@@ -372,7 +409,17 @@ class SOCNotesApp:
                     self.config.COPY_CLEAR = settings.get('copy_clear', False)
                     self.config.COPY_COUNT_WARN = settings.get('copy_count_warn', True)
                     self.config.CLIPBOARD_CLEAR_DELAY = settings.get('clipboard_clear_delay', 0)
-                    self.config.LOCK_PASSWORD = settings.get('lock_password', 'unlock')
+                    self.config.IOC_REFRESH_INTERVAL = settings.get('ioc_refresh_interval', 3)
+                    self.config.TIMESTAMP_FORMAT = settings.get('timestamp_format', '[%Y-%m-%d %H:%M:%S]')
+                    # Lock passphrase — stored as sha256 hex; migrate plaintext on first save
+                    raw_pw = settings.get('lock_password', '')
+                    self.config.LOCK_SALT = settings.get('lock_salt', '')
+                    if not self.config.LOCK_SALT:
+                        self.config.LOCK_SALT = uuid.uuid4().hex
+                    # Migrate plaintext password to hash
+                    if raw_pw and len(raw_pw) != 64:
+                        raw_pw = hashlib.sha256((raw_pw + self.config.LOCK_SALT).encode()).hexdigest()
+                    self.config.LOCK_PASSWORD = raw_pw
                     raw_clients = settings.get('clients', {})
                     # Migrate: older saves stored clients as a plain list of names
                     if isinstance(raw_clients, list):
@@ -389,12 +436,23 @@ class SOCNotesApp:
                             k: [(s, list(items)) for s, items in v]
                             for k, v in custom.items()
                         }
-            
+                    self.escalation_template = settings.get(
+                        'escalation_template', self._DEFAULT_ESCALATION_TEMPLATE)
+                    self._find_history    = settings.get('find_history', [])
+                    self._replace_history = settings.get('replace_history', [])
+            else:
+                self.escalation_template = self._DEFAULT_ESCALATION_TEMPLATE
+
             # Apply system theme if enabled
             if self.config.FOLLOW_SYSTEM_THEME:
                 self.config.DARK_MODE = get_system_theme()
         except Exception as e:
             print(f"Error loading settings: {e}")
+            if not self.escalation_template:
+                self.escalation_template = self._DEFAULT_ESCALATION_TEMPLATE
+        if _bad_settings:
+            self.root.after(600, lambda: self.update_status(
+                "⚠ Settings file was unreadable — defaults loaded"))
 
     def save_settings(self):
         try:
@@ -411,8 +469,14 @@ class SOCNotesApp:
                 'copy_clear': self.config.COPY_CLEAR,
                 'copy_count_warn': self.config.COPY_COUNT_WARN,
                 'clipboard_clear_delay': self.config.CLIPBOARD_CLEAR_DELAY,
+                'ioc_refresh_interval': self.config.IOC_REFRESH_INTERVAL,
+                'timestamp_format': self.config.TIMESTAMP_FORMAT,
                 'lock_password': self.config.LOCK_PASSWORD,
+                'lock_salt': self.config.LOCK_SALT,
                 'clients': self.clients,
+                'escalation_template': self.escalation_template,
+                'find_history': self._find_history[:20],
+                'replace_history': self._replace_history[:20],
                 'active_client': self.active_client,
                 'theme_name': self.config.THEME_NAME,
                 'mileage': self._mileage,
@@ -521,6 +585,8 @@ class SOCNotesApp:
         file_menu.add_command(label="Export IOCs...", command=self.export_iocs, accelerator="Ctrl+E")
         file_menu.add_command(label="Export HTML Report...", command=self.export_html_report)
         file_menu.add_command(label="Export JSON Report...", command=self.export_json_report)
+        file_menu.add_command(label="Export All Tabs as HTML…", command=self.export_all_tabs_html)
+        file_menu.add_command(label="Export All Tabs as JSON…", command=self.export_all_tabs_json)
         file_menu.add_separator()
         file_menu.add_command(label="Reopen Closed Tab", command=self.reopen_closed_tab, accelerator="Ctrl+Shift+T")
         file_menu.add_separator()
@@ -552,6 +618,9 @@ class SOCNotesApp:
         edit_menu.add_command(label="Toggle Bookmark", command=self.toggle_bookmark, accelerator="F2")
         edit_menu.add_command(label="Next Bookmark", command=self.next_bookmark, accelerator="Ctrl+F2")
         edit_menu.add_command(label="Prev Bookmark", command=self.prev_bookmark, accelerator="Shift+F2")
+        edit_menu.add_separator()
+        edit_menu.add_command(label="Insert Timestamp", command=self.insert_timestamp, accelerator="Ctrl+T")
+        edit_menu.add_command(label="🚨 Escalate Current Tab", command=self.escalate_current_tab)
         self.menubar.add_cascade(label="Edit", menu=edit_menu)
 
         # Templates menu
@@ -580,6 +649,9 @@ class SOCNotesApp:
         view_menu.add_separator()
         view_menu.add_command(label="🔴 Toggle Redaction Mode", command=self.toggle_redaction)
         view_menu.add_command(label="🔒 Lock Session", command=self.lock_session, accelerator="Ctrl+L")
+        if SPELL_CHECK_AVAILABLE:
+            view_menu.add_command(label="Toggle Spell Check", command=self.toggle_spell_check,
+                                  accelerator="Ctrl+Shift+P")
         self.menubar.add_cascade(label="View", menu=view_menu)
         
         # Tools menu
@@ -600,6 +672,8 @@ class SOCNotesApp:
         encode_menu.add_command(label="Base64 Decode", command=self.base64_decode)
         tools_menu.add_cascade(label="Encoding", menu=encode_menu)
         
+        tools_menu.add_separator()
+        tools_menu.add_command(label="Format JSON", command=self.format_json, accelerator="Alt+J")
         tools_menu.add_separator()
         tools_menu.add_command(label="Settings...", command=self.show_settings_window)
         self.menubar.add_cascade(label="Tools", menu=tools_menu)
@@ -634,9 +708,10 @@ class SOCNotesApp:
         self.notebook = CustomNotebook(self.root, on_close=self._close_tab_by_index)
         self.notebook.pack(fill="both", expand=True, padx=5, pady=5)
         self.notebook.bind("<<NotebookTabChanged>>", self.on_tab_changed)
-        # Middle-click closes a tab, right-click opens colour menu
+        # Middle-click closes a tab, right-click opens colour menu, double-click renames
         self.notebook.bind("<Button-2>", self.on_tab_middle_click)
         self.notebook.bind("<Button-3>", self.show_tab_colour_menu)
+        self.notebook.bind("<Double-Button-1>", self.start_tab_rename)
 
     def _get_tab_index_at(self, event):
         """Return the tab index under the mouse, or None."""
@@ -824,6 +899,9 @@ class SOCNotesApp:
         self.status_bar.pack(side="bottom", fill="x")
         self.status_left = tk.Label(self.status_bar, text="Ready", anchor="w")
         self.status_left.pack(side="left", padx=5)
+        self.word_count_label = tk.Label(self.status_bar, text="", anchor="e",
+                                         font=("Consolas", 9), fg="#888888")
+        self.word_count_label.pack(side="right", padx=10)
         self.status_right = tk.Label(self.status_bar, text="", anchor="e")
         self.status_right.pack(side="right", padx=5)
 
@@ -853,6 +931,10 @@ class SOCNotesApp:
         self.root.bind('<F2>',        lambda e: self.toggle_bookmark())
         self.root.bind('<Control-F2>', lambda e: self.next_bookmark())
         self.root.bind('<Shift-F2>',   lambda e: self.prev_bookmark())
+        self.root.bind('<Control-t>',  lambda e: self.insert_timestamp())
+        self.root.bind('<Alt-j>',      lambda e: self.format_json())
+        if SPELL_CHECK_AVAILABLE:
+            self.root.bind('<Control-Shift-P>', lambda e: self.toggle_spell_check())
         # ASCII Quick Menu keybindings
         if self.ascii_menu_integration:
             self.ascii_menu_integration.bind_keys()
@@ -2108,6 +2190,10 @@ class SOCNotesApp:
         text_frame.text.bind('<ButtonRelease>', self.on_text_change_event)
         text_frame.text.bind('<FocusIn>', self.on_text_focus)
         text_frame.text.bind('<Motion>', self.on_cursor_move)
+        # Word/char count + spell check on keystroke
+        text_frame.text.bind('<KeyRelease>', lambda e: (self.update_word_count(),
+                             self._schedule_spell_check() if self._spell_check_on else None),
+                             add=True)
         
         self.notebook.add(frame, text=title)
         self.notebook.select(frame)
@@ -2163,6 +2249,7 @@ class SOCNotesApp:
             del self.current_file_paths[current]
         self._pinned_tabs.discard(current_frame)
         self._bookmarks.pop(current_frame, None)
+        self._tab_colour_images.pop(current_frame, None)  # free PhotoImage
         self.notebook.forget(current)
 
         if len(self.tabs) == 0:
@@ -2173,6 +2260,7 @@ class SOCNotesApp:
         self._reposition_close_buttons()
         self._update_client_lock_ui()
         self.root.after(100, self._update_traffic_light)
+        self.root.after(150, self.update_word_count)
 
     def get_text_widget(self, frame):
         """Get the actual text widget from frame (handles LineNumberText wrapper)"""
@@ -2232,6 +2320,19 @@ class SOCNotesApp:
         text = text_widget.get("1.0", "end-1c")
         
         try:
+            # Auto-backup: rotate up to 3 .bak copies
+            if os.path.exists(filepath):
+                bak3 = filepath + ".bak3"
+                bak2 = filepath + ".bak2"
+                bak  = filepath + ".bak"
+                if os.path.exists(bak3):
+                    os.remove(bak3)
+                if os.path.exists(bak2):
+                    os.rename(bak2, bak3)
+                if os.path.exists(bak):
+                    os.rename(bak, bak2)
+                import shutil
+                shutil.copy2(filepath, bak)
             with open(filepath, "w", encoding="utf-8") as f:
                 f.write(text)
             self.update_status(f"Saved {filepath}")
@@ -2385,44 +2486,67 @@ class SOCNotesApp:
         text_widget = self.get_text_widget(current_frame)
         text = text_widget.get("1.0", "end-1c")
         
-        # Extract IOCs using patterns
+        # Extract IOCs using patterns — deduplicate, track counts
         iocs = {}
+        total = 0
         for ioc_type, pattern in self.ioc_patterns.items():
             matches = pattern.findall(text)
-            if matches:
-                iocs[ioc_type] = list(set(matches))  # Remove duplicates
-        
-        # Display in new window
-        self.show_ioc_window(iocs)
+            total += len(matches)
+            counts = {}
+            for m in matches:
+                counts[m] = counts.get(m, 0) + 1
+            if counts:
+                iocs[ioc_type] = counts  # {value: count}
+        unique = sum(len(v) for v in iocs.values())
 
-    def show_ioc_window(self, iocs):
+        # Display in new window
+        self.show_ioc_window(iocs, unique=unique, total=total)
+
+    def show_ioc_window(self, iocs, unique=None, total=None):
+        """iocs: {type: {value: count}} or {type: [value,...]} (legacy)."""
         window = tk.Toplevel(self.root)
         window.title("Extracted IOCs")
-        window.geometry("600x400")
-        
+        window.geometry("640x420")
+
+        if unique is not None and total is not None:
+            ttk.Label(window, text=f"Found {unique} unique IOCs ({total} total occurrences)",
+                      font=("Consolas", 10, "bold")).pack(anchor="w", padx=10, pady=(6, 0))
+
         # Create treeview
-        tree = ttk.Treeview(window, columns=("Type", "Value"), show="tree headings")
-        tree.heading("#0", text="")
-        tree.heading("Type", text="Type")
+        tree = ttk.Treeview(window, columns=("Type", "Value", "Count"), show="headings")
+        tree.heading("Type",  text="Type")
         tree.heading("Value", text="Value")
-        tree.column("#0", width=50)
-        tree.column("Type", width=150)
+        tree.heading("Count", text="Count")
+        tree.column("Type",  width=130)
         tree.column("Value", width=400)
-        
-        # Add IOCs to tree
-        for ioc_type, values in iocs.items():
-            parent = tree.insert("", "end", text="", values=(ioc_type.upper(), f"{len(values)} found"))
-            for value in sorted(values):
-                tree.insert(parent, "end", text="", values=("", value))
-        
-        tree.pack(fill="both", expand=True, padx=10, pady=10)
-        
-        # Add export button
+        tree.column("Count", width=60, anchor="center")
+
+        # Normalise to {type: {value: count}}
+        normalised = {}
+        for ioc_type, vals in iocs.items():
+            if isinstance(vals, dict):
+                normalised[ioc_type] = vals
+            else:
+                normalised[ioc_type] = {v: 1 for v in vals}
+
+        for ioc_type, counts in normalised.items():
+            for value, cnt in sorted(counts.items()):
+                tree.insert("", "end", values=(ioc_type.upper(), value, cnt if cnt > 1 else ""))
+
+        scrollbar = ttk.Scrollbar(window, orient="vertical", command=tree.yview)
+        tree.configure(yscrollcommand=scrollbar.set)
+        tree.pack(side="left", fill="both", expand=True, padx=(10,0), pady=10)
+        scrollbar.pack(side="left", fill="y", pady=10)
+
+        # Export flattened dict for CSV
+        flat = {t: list(c.keys()) for t, c in normalised.items()}
         export_frame = tk.Frame(window)
         export_frame.pack(fill="x", padx=10, pady=5)
-        
-        tk.Button(export_frame, text="Export to CSV", 
-                 command=lambda: self.export_iocs_from_dict(iocs)).pack(side="right")
+        tk.Button(export_frame, text="Export to CSV",
+                  command=lambda: self.export_iocs_from_dict(flat)).pack(side="right")
+
+        if unique is not None:
+            self.update_status(f"Extracted {unique} unique IOCs ({total} total)")
 
     def export_iocs(self):
         current = self.notebook.select()
@@ -3061,6 +3185,23 @@ class SOCNotesApp:
             self.update_status(f"Opened template in new tab: {template_name}")
 
     # --------------------- Find/Replace ---------------------
+    def _push_find_history(self, term):
+        """Add term to find history, deduplicate, trim to 20."""
+        if term and term not in self._find_history:
+            self._find_history.insert(0, term)
+            self._find_history = self._find_history[:20]
+        elif term in self._find_history:
+            self._find_history.remove(term)
+            self._find_history.insert(0, term)
+
+    def _push_replace_history(self, term):
+        if term and term not in self._replace_history:
+            self._replace_history.insert(0, term)
+            self._replace_history = self._replace_history[:20]
+        elif term in self._replace_history:
+            self._replace_history.remove(term)
+            self._replace_history.insert(0, term)
+
     def show_find_dialog(self):
         if self.find_dialog and self.find_dialog.winfo_exists():
             self.find_dialog.focus()
@@ -3070,11 +3211,12 @@ class SOCNotesApp:
 
         self.find_dialog = tk.Toplevel(self.root)
         self.find_dialog.title("Find")
-        self.find_dialog.geometry("380x130")
+        self.find_dialog.geometry("420x140")
         self.find_dialog.transient(self.root)
 
         tk.Label(self.find_dialog, text="Find:").grid(row=0, column=0, padx=5, pady=5, sticky="w")
-        self.find_entry = tk.Entry(self.find_dialog, width=30)
+        self.find_entry = ttk.Combobox(self.find_dialog, width=30,
+                                       values=self._find_history)
         self.find_entry.grid(row=0, column=1, padx=5, pady=5)
         self.find_entry.focus()
 
@@ -3084,11 +3226,16 @@ class SOCNotesApp:
         button_frame = tk.Frame(self.find_dialog)
         button_frame.grid(row=1, column=0, columnspan=3, pady=10)
 
-        tk.Button(button_frame, text="Find Next", command=self.find_next).pack(side="left", padx=5)
+        def _find_next_with_history():
+            self._push_find_history(self.find_entry.get())
+            self.find_entry.config(values=self._find_history)
+            self.find_next()
+
+        tk.Button(button_frame, text="Find Next", command=_find_next_with_history).pack(side="left", padx=5)
         tk.Button(button_frame, text="Find All",  command=self.find_all).pack(side="left", padx=5)
         tk.Button(button_frame, text="Clear",     command=self.clear_find).pack(side="left", padx=5)
 
-        self.find_entry.bind('<Return>', lambda e: self.find_next())
+        self.find_entry.bind('<Return>', lambda e: _find_next_with_history())
 
     def show_replace_dialog(self):
         if self.find_dialog and self.find_dialog.winfo_exists():
@@ -3098,17 +3245,19 @@ class SOCNotesApp:
 
         self.find_dialog = tk.Toplevel(self.root)
         self.find_dialog.title("Find and Replace")
-        self.find_dialog.geometry("400x200")
+        self.find_dialog.geometry("440x210")
         self.find_dialog.transient(self.root)
 
         tk.Label(self.find_dialog, text="Find:").grid(row=0, column=0, padx=5, pady=5, sticky="w")
-        self.find_entry = tk.Entry(self.find_dialog, width=30)
+        self.find_entry = ttk.Combobox(self.find_dialog, width=30,
+                                       values=self._find_history)
         self.find_entry.grid(row=0, column=1, padx=5, pady=5)
         tk.Checkbutton(self.find_dialog, text="Regex",
                        variable=self._regex_find_var).grid(row=0, column=2, padx=4)
 
         tk.Label(self.find_dialog, text="Replace:").grid(row=1, column=0, padx=5, pady=5, sticky="w")
-        self.replace_entry = tk.Entry(self.find_dialog, width=30)
+        self.replace_entry = ttk.Combobox(self.find_dialog, width=30,
+                                          values=self._replace_history)
         self.replace_entry.grid(row=1, column=1, padx=5, pady=5)
 
         self.find_entry.focus()
@@ -3116,12 +3265,24 @@ class SOCNotesApp:
         button_frame = tk.Frame(self.find_dialog)
         button_frame.grid(row=2, column=0, columnspan=3, pady=10)
 
-        tk.Button(button_frame, text="Find Next",   command=self.find_next).pack(side="left", padx=2)
+        def _find_next_h():
+            self._push_find_history(self.find_entry.get())
+            self.find_entry.config(values=self._find_history)
+            self.find_next()
+
+        def _replace_all_h():
+            self._push_find_history(self.find_entry.get())
+            self._push_replace_history(self.replace_entry.get())
+            self.find_entry.config(values=self._find_history)
+            self.replace_entry.config(values=self._replace_history)
+            self.replace_all()
+
+        tk.Button(button_frame, text="Find Next",   command=_find_next_h).pack(side="left", padx=2)
         tk.Button(button_frame, text="Replace",     command=self.replace_current).pack(side="left", padx=2)
-        tk.Button(button_frame, text="Replace All", command=self.replace_all).pack(side="left", padx=2)
+        tk.Button(button_frame, text="Replace All", command=_replace_all_h).pack(side="left", padx=2)
         tk.Button(button_frame, text="Clear",       command=self.clear_find).pack(side="left", padx=2)
 
-        self.find_entry.bind('<Return>', lambda e: self.find_next())
+        self.find_entry.bind('<Return>', lambda e: _find_next_h())
 
     def _use_regex(self):
         return getattr(self, '_regex_find_var', None) and self._regex_find_var.get()
@@ -3600,6 +3761,10 @@ class SOCNotesApp:
         notebook.add(clients_frm, text="Clients")
         self.create_clients_tab(clients_frm)
 
+        escalation_frm = ttk.Frame(notebook)
+        notebook.add(escalation_frm, text="Escalation")
+        self.create_escalation_tab(escalation_frm)
+
         mileage_frm = ttk.Frame(notebook)
         notebook.add(mileage_frm, text="Session Mileage")
         self.create_mileage_tab(mileage_frm)
@@ -3731,8 +3896,8 @@ class SOCNotesApp:
         lock_frame.pack(fill="x", padx=10, pady=5)
         pw_row = ttk.Frame(lock_frame)
         pw_row.pack(fill="x", padx=5, pady=4)
-        ttk.Label(pw_row, text="Lock passphrase:").pack(side="left")
-        self._lock_pw_var = tk.StringVar(value=self.config.LOCK_PASSWORD)
+        ttk.Label(pw_row, text="New passphrase:").pack(side="left")
+        self._lock_pw_var = tk.StringVar(value="")
         self._lock_pw_entry = ttk.Entry(pw_row, textvariable=self._lock_pw_var,
                                         show="●", width=22)
         self._lock_pw_entry.pack(side="left", padx=6)
@@ -3744,8 +3909,31 @@ class SOCNotesApp:
 
         lock_show_btn = ttk.Button(pw_row, text="Show", width=6, command=_toggle_show_lock)
         lock_show_btn.pack(side="left")
-        ttk.Label(lock_frame, text="Leave blank to disable passphrase check.",
+        self._lock_clear_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(pw_row, text="Clear passphrase (disable lock)",
+                        variable=self._lock_clear_var).pack(side="left", padx=8)
+        ttk.Label(lock_frame,
+                  text="Leave blank to keep current passphrase. Stored as SHA-256 hash.",
                   foreground="grey", font=("Arial", 8)).pack(anchor="w", padx=5, pady=(0, 4))
+
+        ts_frame = ttk.LabelFrame(parent, text="Timestamp Insertion  (Ctrl+T)")
+        ts_frame.pack(fill="x", padx=10, pady=5)
+        ts_row = ttk.Frame(ts_frame)
+        ts_row.pack(fill="x", padx=5, pady=4)
+        ttk.Label(ts_row, text="Format:").pack(side="left")
+        self._ts_fmt_var = tk.StringVar(value=self.config.TIMESTAMP_FORMAT)
+        ttk.Entry(ts_row, textvariable=self._ts_fmt_var, width=28).pack(side="left", padx=6)
+        ttk.Label(ts_row, text=f"e.g. {datetime.now().strftime(self.config.TIMESTAMP_FORMAT)}",
+                  foreground="grey", font=("Arial", 8)).pack(side="left")
+
+        ioc_panel_frame = ttk.LabelFrame(parent, text="IOC Panel")
+        ioc_panel_frame.pack(fill="x", padx=10, pady=5)
+        ioc_row = ttk.Frame(ioc_panel_frame)
+        ioc_row.pack(fill="x", padx=5, pady=4)
+        ttk.Label(ioc_row, text="Refresh interval (seconds):").pack(side="left")
+        self._ioc_refresh_var = tk.IntVar(value=self.config.IOC_REFRESH_INTERVAL)
+        ttk.Spinbox(ioc_row, from_=1, to=60, textvariable=self._ioc_refresh_var,
+                    width=5).pack(side="left", padx=6)
 
         autosave_frame = ttk.LabelFrame(parent, text="Auto-save")
         autosave_frame.pack(fill="x", padx=10, pady=5)
@@ -3842,7 +4030,22 @@ class SOCNotesApp:
         if hasattr(self, 'clipboard_clear_var'):
             self.config.CLIPBOARD_CLEAR_DELAY = self.clipboard_clear_var.get()
         if hasattr(self, '_lock_pw_var'):
-            self.config.LOCK_PASSWORD = self._lock_pw_var.get()
+            pw = self._lock_pw_var.get()
+            if getattr(self, '_lock_clear_var', tk.BooleanVar()).get():
+                self.config.LOCK_PASSWORD = ""
+            elif pw:
+                if not self.config.LOCK_SALT:
+                    self.config.LOCK_SALT = uuid.uuid4().hex
+                self.config.LOCK_PASSWORD = hashlib.sha256(
+                    (pw + self.config.LOCK_SALT).encode()).hexdigest()
+                self.update_status("Lock passphrase updated (SHA-256 hashed)")
+            # else: keep existing hash
+        if hasattr(self, '_ts_fmt_var'):
+            self.config.TIMESTAMP_FORMAT = self._ts_fmt_var.get()
+        if hasattr(self, '_ioc_refresh_var'):
+            self.config.IOC_REFRESH_INTERVAL = self._ioc_refresh_var.get()
+        if hasattr(self, '_esc_tmpl_text'):
+            self.escalation_template = self._esc_tmpl_text.get("1.0", "end-1c").rstrip('\n')
         if hasattr(self, 'theme_preset_var'):
             self.config.THEME_NAME = self.theme_preset_var.get()
         
@@ -4936,6 +5139,10 @@ class SOCNotesApp:
         frame = self.notebook.nametowidget(current)
         menu = tk.Menu(self.root, tearoff=0)
 
+        # Escalate
+        menu.add_command(label="🚨 Escalate Tab", command=self.escalate_current_tab)
+        menu.add_separator()
+
         # Pin / Unpin
         if frame in self._pinned_tabs:
             menu.add_command(label="📌 Unpin Tab", command=lambda: self.toggle_pin_tab(frame))
@@ -5125,9 +5332,18 @@ class SOCNotesApp:
         msg_lbl.pack()
 
         stored = self.config.LOCK_PASSWORD
+        salt   = self.config.LOCK_SALT
 
         def _try_unlock():
-            if not stored or entry.get() == stored:
+            typed = entry.get()
+            # No passphrase set → unlock freely
+            if not stored:
+                self.root.unbind("<Configure>")
+                lock_win.destroy()
+                self.update_status("Session unlocked")
+                return
+            typed_hash = hashlib.sha256((typed + salt).encode()).hexdigest()
+            if typed_hash == stored:
                 self.root.unbind("<Configure>")
                 lock_win.destroy()
                 self.update_status("Session unlocked")
@@ -5226,20 +5442,30 @@ class SOCNotesApp:
         tk.Button(footer, text="Refresh", font=("Consolas", 9),
                   command=self._refresh_ioc_panel,
                   bg="#333333", fg="white", bd=0, pady=4).pack(side="left", padx=8, pady=4)
+
+        self._ioc_pause_var = tk.StringVar(value="⏸ Pause")
+        def _toggle_pause():
+            self._ioc_panel_paused = not self._ioc_panel_paused
+            self._ioc_pause_var.set("▶ Resume" if self._ioc_panel_paused else "⏸ Pause")
+        tk.Button(footer, textvariable=self._ioc_pause_var, font=("Consolas", 9),
+                  command=_toggle_pause,
+                  bg="#444444", fg="white", bd=0, pady=4).pack(side="left", padx=4, pady=4)
+
         tk.Button(footer, text="Close", font=("Consolas", 9),
                   command=lambda: (win.destroy(), setattr(self, '_ioc_panel_win', None)),
                   bg="#333333", fg="white", bd=0, pady=4).pack(side="right", padx=8, pady=4)
 
         self._refresh_ioc_panel()
-        # Auto-refresh every 3 seconds while panel is open
         self._schedule_ioc_refresh()
         win.protocol("WM_DELETE_WINDOW",
                      lambda: (win.destroy(), setattr(self, '_ioc_panel_win', None)))
 
     def _schedule_ioc_refresh(self):
         if self._ioc_panel_win and self._ioc_panel_win.winfo_exists():
-            self._refresh_ioc_panel()
-            self._ioc_panel_win.after(3000, self._schedule_ioc_refresh)
+            if not self._ioc_panel_paused:
+                self._refresh_ioc_panel()
+            interval = max(1, int(self.config.IOC_REFRESH_INTERVAL)) * 1000
+            self._ioc_panel_win.after(interval, self._schedule_ioc_refresh)
 
     def _refresh_ioc_panel(self):
         if not self._ioc_panel_win or not self._ioc_panel_win.winfo_exists():
@@ -5495,6 +5721,294 @@ Exported: {_dt.now().strftime('%Y-%m-%d %H:%M')}</p>
                 self.apply_syntax_highlighting(text_widget)
             self.update_status(f"Inserted snippet: {snippet_name}")
     
+    # --------------------- New Feature Methods ---------------------
+
+    def update_word_count(self):
+        """Update the word/char count in the status bar for the active tab."""
+        try:
+            current = self.notebook.select()
+            if not current:
+                self.word_count_label.config(text="")
+                return
+            frame = self.notebook.nametowidget(current)
+            tw = self.get_text_widget(frame)
+            if not tw:
+                return
+            text = tw.get("1.0", "end-1c")
+            words = len(text.split())
+            chars = len(text)
+            self.word_count_label.config(text=f"W:{words}  C:{chars}")
+        except Exception:
+            pass
+
+    def insert_timestamp(self):
+        """Insert a formatted timestamp at the cursor position."""
+        current = self.notebook.select()
+        if not current:
+            return
+        frame = self.notebook.nametowidget(current)
+        tw = self.get_text_widget(frame)
+        if tw:
+            stamp = datetime.now().strftime(self.config.TIMESTAMP_FORMAT)
+            tw.insert("insert", stamp)
+            self.update_status(f"Inserted timestamp: {stamp}")
+
+    def format_json(self):
+        """Pretty-print JSON content in the active tab."""
+        current = self.notebook.select()
+        if not current:
+            return
+        frame = self.notebook.nametowidget(current)
+        tw = self.get_text_widget(frame)
+        if not tw:
+            return
+        text = tw.get("1.0", "end-1c")
+        try:
+            parsed = json.loads(text)
+            pretty = json.dumps(parsed, indent=2)
+            tw.delete("1.0", "end")
+            tw.insert("1.0", pretty)
+            self.update_status(f"JSON formatted ({len(parsed) if isinstance(parsed, (list,dict)) else 1} items)")
+        except json.JSONDecodeError as e:
+            self.update_status(f"JSON error: {e}")
+
+    def start_tab_rename(self, event=None):
+        """Rename the tab that was double-clicked (or the active tab)."""
+        try:
+            if event:
+                tab_id = self.notebook.identify_tab(event.x, event.y)
+                if not tab_id:
+                    return
+            else:
+                tab_id = self.notebook.select()
+            if not tab_id:
+                return
+            current_title = self.notebook.tab(tab_id, "text")
+            new_title = simpledialog.askstring(
+                "Rename Tab", "New tab name:", initialvalue=current_title,
+                parent=self.root)
+            if new_title and new_title.strip():
+                self.notebook.tab(tab_id, text=new_title.strip())
+                self.update_status(f"Tab renamed: {new_title.strip()}")
+        except Exception:
+            pass
+
+    def _quick_extract_iocs(self, text, limit=5):
+        """Return a short multiline string of top unique IOCs from text."""
+        seen = []
+        for ioc_type, pattern in self.ioc_patterns.items():
+            for m in pattern.findall(text):
+                if m not in seen:
+                    seen.append(m)
+                if len(seen) >= limit:
+                    break
+            if len(seen) >= limit:
+                break
+        if not seen:
+            return "(none detected)"
+        return "\n".join(f"  • {v}" for v in seen[:limit])
+
+    def escalate_current_tab(self):
+        """Create an escalation note pre-filled from the current tab."""
+        current = self.notebook.select()
+        if not current:
+            return
+        frame = self.notebook.nametowidget(current)
+        tw = self.get_text_widget(frame)
+        first_note = tw.get("1.0", "end-1c") if tw else ""
+        client  = self.active_client or ""
+        analyst = os.environ.get("USERNAME") or os.environ.get("USER") or ""
+        iocs    = self._quick_extract_iocs(first_note)
+        try:
+            content = self.escalation_template.format(
+                date=datetime.now().strftime("%Y-%m-%d %H:%M"),
+                client=client,
+                analyst=analyst,
+                severity="(set severity)",
+                iocs=iocs,
+                first_note=first_note,
+            )
+        except KeyError:
+            # Template may have different placeholders — fall back gracefully
+            content = self.escalation_template + f"\n\n{first_note}"
+        title = f"{client} – Escalation" if client else "Escalation Note"
+        self.new_tab(title, content)
+        self.update_status("Escalation note created — edit, then Ctrl+1 to copy")
+
+    def create_escalation_tab(self, parent):
+        """Settings tab for editing the escalation note template."""
+        ttk.Label(parent, text="Escalation Note Template",
+                  font=("Arial", 10, "bold")).pack(anchor="w", padx=10, pady=(8, 2))
+        ttk.Label(parent,
+                  text="Available variables: {date}  {client}  {analyst}  {severity}  {first_note}  {iocs}",
+                  foreground="grey", font=("Arial", 8)).pack(anchor="w", padx=10)
+
+        self._esc_tmpl_text = tk.Text(parent, font=("Consolas", 10), wrap="word",
+                                      height=18, undo=True)
+        self._esc_tmpl_text.pack(fill="both", expand=True, padx=10, pady=6)
+        self._esc_tmpl_text.insert("1.0", self.escalation_template)
+
+        btn_row = ttk.Frame(parent)
+        btn_row.pack(fill="x", padx=10, pady=(0, 6))
+
+        def _reset():
+            self._esc_tmpl_text.delete("1.0", "end")
+            self._esc_tmpl_text.insert("1.0", self._DEFAULT_ESCALATION_TEMPLATE)
+
+        ttk.Button(btn_row, text="Reset to Default", command=_reset).pack(side="left")
+        ttk.Label(btn_row,
+                  text="Changes take effect after clicking Apply / OK.",
+                  foreground="grey", font=("Arial", 8)).pack(side="left", padx=12)
+
+    def export_all_tabs_html(self):
+        """Export all open tabs as a single HTML file."""
+        import html as _html
+        if not self.tabs:
+            messagebox.showinfo("No Tabs", "No open tabs to export.")
+            return
+        filepath = filedialog.asksaveasfilename(
+            defaultextension=".html",
+            filetypes=[("HTML Files", "*.html"), ("All Files", "*.*")],
+            initialfile="threatpad_all_tabs.html")
+        if not filepath:
+            return
+        toc_items = []
+        sections  = []
+        for i, (frame, text_container) in enumerate(self.tabs.items(), 1):
+            title = self.notebook.tab(frame, "text")
+            tw = text_container.text if hasattr(text_container, 'text') else text_container
+            content = tw.get("1.0", "end-1c")
+            safe_title = _html.escape(title)
+            safe_content = _html.escape(content)
+            toc_items.append(f'<li><a href="#tab{i}">{safe_title}</a></li>')
+            sections.append(
+                f'<section id="tab{i}" style="margin-bottom:2em;">'
+                f'<h2>{safe_title}</h2>'
+                f'<pre style="background:#1e1e1e;color:#d4d4d4;padding:1em;'
+                f'border-radius:4px;white-space:pre-wrap;">{safe_content}</pre>'
+                f'</section>'
+            )
+        exported_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        html_out = (
+            '<!DOCTYPE html><html><head><meta charset="utf-8">'
+            '<title>ThreatPad Export</title>'
+            '<style>body{font-family:Consolas,monospace;background:#111;color:#ccc;padding:2em;}'
+            'a{color:#4488ff;}h1,h2{color:#00bfff;}</style>'
+            '</head><body>'
+            f'<h1>ThreatPad — All Tabs Export</h1>'
+            f'<p style="color:#888;">Exported: {exported_at} — {len(self.tabs)} tab(s)</p>'
+            f'<ol>{"".join(toc_items)}</ol><hr/>'
+            + "".join(sections) +
+            '</body></html>'
+        )
+        try:
+            with open(filepath, "w", encoding="utf-8") as f:
+                f.write(html_out)
+            self.update_status(f"Exported {len(self.tabs)} tabs → {os.path.basename(filepath)}")
+        except Exception as e:
+            messagebox.showerror("Export Error", str(e))
+
+    def export_all_tabs_json(self):
+        """Export all open tabs as a structured JSON bundle."""
+        if not self.tabs:
+            messagebox.showinfo("No Tabs", "No open tabs to export.")
+            return
+        filepath = filedialog.asksaveasfilename(
+            defaultextension=".json",
+            filetypes=[("JSON Files", "*.json"), ("All Files", "*.*")],
+            initialfile="threatpad_all_tabs.json")
+        if not filepath:
+            return
+        tabs_data = []
+        for frame, text_container in self.tabs.items():
+            title = self.notebook.tab(frame, "text")
+            tw = text_container.text if hasattr(text_container, 'text') else text_container
+            content = tw.get("1.0", "end-1c")
+            iocs = {}
+            for ioc_type, pattern in self.ioc_patterns.items():
+                matches = list(set(pattern.findall(content)))
+                if matches:
+                    iocs[ioc_type] = matches
+            tabs_data.append({
+                "title": title,
+                "client": self._tab_locked_client.get(frame, self.active_client or ""),
+                "content": content,
+                "iocs": iocs,
+            })
+        bundle = {
+            "exported_at": datetime.now().isoformat(),
+            "tab_count": len(tabs_data),
+            "tabs": tabs_data,
+        }
+        try:
+            with open(filepath, "w", encoding="utf-8") as f:
+                json.dump(bundle, f, indent=2)
+            self.update_status(f"Exported {len(tabs_data)} tabs → {os.path.basename(filepath)}")
+        except Exception as e:
+            messagebox.showerror("Export Error", str(e))
+
+    def toggle_spell_check(self):
+        """Toggle spell-check underlines on the active tab."""
+        if not SPELL_CHECK_AVAILABLE or not self.spell:
+            self.update_status("Spell checker not available (install pyspellchecker)")
+            return
+        self._spell_check_on = not self._spell_check_on
+        if self._spell_check_on:
+            self.update_status("Spell check ON")
+            self._schedule_spell_check()
+        else:
+            self.update_status("Spell check OFF")
+            self._clear_spell_tags()
+
+    def _clear_spell_tags(self):
+        """Remove spell_error tags from all tabs."""
+        for frame in self.tabs:
+            tw = self.get_text_widget(frame)
+            if tw:
+                try:
+                    tw.tag_remove("spell_error", "1.0", "end")
+                except Exception:
+                    pass
+
+    def _schedule_spell_check(self):
+        """Schedule a spell check run after a short debounce."""
+        if self._spell_check_job:
+            self.root.after_cancel(self._spell_check_job)
+        if self._spell_check_on:
+            self._spell_check_job = self.root.after(1500, self._run_spell_check)
+
+    def _run_spell_check(self):
+        """Apply red underline tags to misspelled words in the active tab."""
+        if not self._spell_check_on or not self.spell:
+            return
+        current = self.notebook.select()
+        if not current:
+            return
+        frame = self.notebook.nametowidget(current)
+        tw = self.get_text_widget(frame)
+        if not tw:
+            return
+        text = tw.get("1.0", "end-1c")
+        # Skip large content for performance
+        if len(text) > 10000:
+            self._schedule_spell_check()
+            return
+        tw.tag_remove("spell_error", "1.0", "end")
+        tw.tag_config("spell_error", underline=True, foreground="red")
+        words = re.findall(r"\b[a-zA-Z]{3,}\b", text)
+        unknown = self.spell.unknown(words)
+        for word in unknown:
+            start = "1.0"
+            while True:
+                pos = tw.search(r"\b" + re.escape(word) + r"\b", start, stopindex="end",
+                                regexp=True, nocase=False)
+                if not pos:
+                    break
+                end = f"{pos}+{len(word)}c"
+                tw.tag_add("spell_error", pos, end)
+                start = end
+        self._schedule_spell_check()
+
     # --------------------- Template Management ---------------------
     def create_templates_tab(self, parent):
         self.load_templates_data()

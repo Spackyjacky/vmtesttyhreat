@@ -167,10 +167,10 @@ def _make_template(action_key: str, template_name: str, client: str) -> str:
 ESCALATION_TEMPLATE = """\
 === ESCALATION NOTE ===
 Date       : {date}
-Analyst    :
+Analyst    : {analyst}
 Incident ID: INC-
-Severity   :
-Client     :
+Severity   : {severity}
+Client     : {client}
 
 --- REASON FOR ESCALATION ---
 
@@ -180,6 +180,9 @@ Client     :
 ────────────────────────────────────────────────
 {first_note}
 ────────────────────────────────────────────────
+
+--- KEY IOCs ---
+{iocs}
 """
 
 
@@ -325,6 +328,9 @@ class ASCIIMenuWindow:
         # History pin mode (Level 3 Open)
         self._pin_mode        = False
         self._history_display = []
+        # History browse mode (H from Level 1)
+        self._in_history_browse    = False
+        self._history_browse_display = []
 
         self._build()
 
@@ -449,20 +455,53 @@ class ASCIIMenuWindow:
 
     def _render_level1(self):
         self.title_var.set("  T H R E A T P A D   Q U I C K   M E N U  ")
-        self.footer_var.set("press key or click  •  [0] skip/close  •  [ESC] close")
+        self.footer_var.set("press key or click  •  [0] skip/close  •  [H] history  •  [ESC] close")
         tk.Frame(self.items_frame, bg=BG, height=6).grid(row=0, column=0)
         for i, (key, label) in enumerate(_ACTION_LABELS.items()):
             self._make_item(self.items_frame, key, label,
                             lambda k=key: self._pick_action(k), row=i + 1)
+        self._make_item(self.items_frame, "H", "Browse History",
+                        self._render_history, row=len(_ACTION_LABELS) + 1)
         self._make_item(self.items_frame, "0", "Skip / Close",
-                        self._close, row=len(_ACTION_LABELS) + 1)
+                        self._close, row=len(_ACTION_LABELS) + 2)
         tk.Frame(self.items_frame, bg=BG, height=6).grid(
-            row=len(_ACTION_LABELS) + 2, column=0)
+            row=len(_ACTION_LABELS) + 3, column=0)
 
     def _pick_action(self, key: str):
         self.action = key
         self.level = 2
         self._render()
+
+    # -- history browser (accessible from level 1 via H) ----------------------
+
+    def _render_history(self):
+        """Show all recent notes for browsing and reopening."""
+        self._clear_items()
+        self.title_var.set("  NOTE HISTORY  ")
+        self.footer_var.set("press number to open  •  [ESC] back")
+        entries = self.history.get_all()
+        pinned   = [e for e in entries if e.get("pinned")]
+        unpinned = [e for e in entries if not e.get("pinned")]
+        display  = (pinned + unpinned)[:15]
+        self._history_browse_display = display
+
+        # Keys: 1-9 for first 9, 0 for 10th, a-e for 11-15
+        keys = list("123456789") + ["0"] + list("abcde")
+        tk.Frame(self.items_frame, bg=BG, height=6).grid(row=0, column=0)
+        if not display:
+            tk.Label(self.items_frame, text="  No saved notes yet.",
+                     font=FONT, bg=BG, fg=FG_DIM).grid(row=1, column=0, padx=20, pady=10)
+        else:
+            for i, entry in enumerate(display):
+                pin_icon = "📌 " if entry.get("pinned") else ""
+                label = f"{pin_icon}{entry.get('saved_at','')[:16]}  {entry['title'][:40]}"
+                self._make_item(self.items_frame, keys[i], label,
+                                lambda e=entry: self._open_note(e),
+                                row=i + 1)
+        tk.Frame(self.items_frame, bg=BG, height=6).grid(row=17, column=0)
+        self._in_history_browse = True
+        self.win.update_idletasks()
+        self._center()
 
     # -- level 2: template picker (or client picker for Open) -----------------
 
@@ -682,9 +721,24 @@ class ASCIIMenuWindow:
         if not key:
             return
 
+        # History browse mode (H from level 1)
+        if getattr(self, '_in_history_browse', False):
+            display = getattr(self, '_history_browse_display', [])
+            key_map = list("123456789") + ["0"] + list("ABCDE")
+            raw = event.char.upper() if event.char else ""
+            if raw in key_map:
+                idx = key_map.index(raw)
+                if 0 <= idx < len(display):
+                    self._in_history_browse = False
+                    self._open_note(display[idx])
+            return
+
         if self.level == 1:
             if key == "0":
                 self._close()
+            elif key == "H":
+                self._render_history()
+                return
             elif key in _ACTION_LABELS:
                 self._pick_action(key)
 
@@ -755,6 +809,12 @@ class ASCIIMenuWindow:
     # -- navigation -----------------------------------------------------------
 
     def _go_back(self):
+        if getattr(self, '_in_history_browse', False):
+            self._in_history_browse = False
+            self._history_browse_display = []
+            self.level = 1
+            self._render()
+            return
         if self.level == 1:
             self._close()
         elif self.level == 2:
@@ -924,13 +984,25 @@ class ASCIIMenuIntegration:
         text_widget = app.get_text_widget(frame)
         first_note  = text_widget.get("1.0", "end-1c")
 
-        content = ESCALATION_TEMPLATE.format(
-            date=_ts(),
-            first_note=first_note,
-        )
+        client  = self.current_client or getattr(app, 'active_client', '') or ""
+        analyst = os.environ.get("USERNAME") or os.environ.get("USER") or ""
+        iocs    = getattr(app, '_quick_extract_iocs', lambda t: "(see note)")(first_note)
 
-        tab_title = f"{self.current_client} – Escalation Note" \
-                    if self.current_client else "Escalation Note"
+        # Use app's user-editable template if available, fall back to module constant
+        template = getattr(app, 'escalation_template', None) or ESCALATION_TEMPLATE
+        try:
+            content = template.format(
+                date=_ts(),
+                client=client,
+                analyst=analyst,
+                severity="(set severity)",
+                iocs=iocs,
+                first_note=first_note,
+            )
+        except KeyError:
+            content = template + f"\n\n{first_note}"
+
+        tab_title = f"{client} – Escalation Note" if client else "Escalation Note"
         app.new_tab(tab_title, content)
 
         try:
