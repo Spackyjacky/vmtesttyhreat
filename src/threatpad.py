@@ -31,8 +31,29 @@ except Exception:
     ASCII_MENU_AVAILABLE = False
     ASCIIMenuIntegration = None
 
+CLIENTS_ENC_AVAILABLE = False
+try:
+    from cryptography.fernet import Fernet
+    from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+    from cryptography.hazmat.primitives import hashes
+    CLIENTS_ENC_AVAILABLE = True
+except ImportError:
+    pass
+
 
 # --------------------- Helpers ---------------------
+_CLIENTS_ENC_SALT = b"threatpad-client-enc-v1"
+
+def _derive_client_key():
+    """Derive a machine-bound Fernet key from MAC address + hostname."""
+    machine = f"{uuid.getnode()}-{platform.node()}".encode()
+    kdf = PBKDF2HMAC(
+        algorithm=hashes.SHA256(), length=32,
+        salt=_CLIENTS_ENC_SALT, iterations=100_000,
+    )
+    return base64.urlsafe_b64encode(kdf.derive(machine))
+
+
 def _darken_hex(hex_colour, factor=0.7):
     """Return a darkened version of a #rrggbb hex colour string."""
     hex_colour = hex_colour.lstrip('#')
@@ -424,7 +445,18 @@ Client     : {client}
                     if raw_pw and len(raw_pw) != 64:
                         raw_pw = hashlib.sha256((raw_pw + self.config.LOCK_SALT).encode()).hexdigest()
                     self.config.LOCK_PASSWORD = raw_pw
-                    raw_clients = settings.get('clients', {})
+                    if 'clients_enc' in settings and CLIENTS_ENC_AVAILABLE:
+                        try:
+                            enc = base64.b64decode(settings['clients_enc'])
+                            raw_clients = json.loads(Fernet(_derive_client_key()).decrypt(enc).decode())
+                        except Exception:
+                            raw_clients = {}
+                            self.root.after(500, lambda: self.update_status(
+                                "⚠ Could not decrypt client data — wrong machine or corrupted file"))
+                    elif 'clients' in settings:
+                        raw_clients = settings['clients']
+                    else:
+                        raw_clients = {}
                     # Migrate: older saves stored clients as a plain list of names
                     if isinstance(raw_clients, list):
                         raw_clients = {name: {} for name in raw_clients}
@@ -479,7 +511,6 @@ Client     : {client}
                 'timestamp_format': self.config.TIMESTAMP_FORMAT,
                 'lock_password': self.config.LOCK_PASSWORD,
                 'lock_salt': self.config.LOCK_SALT,
-                'clients': self.clients,
                 'escalation_template': self.escalation_template,
                 'find_history': self._find_history[:20],
                 'replace_history': self._replace_history[:20],
@@ -491,6 +522,12 @@ Client     : {client}
                     for k, v in self.TRAINING_CHECKLISTS.items()
                 }
             }
+            if CLIENTS_ENC_AVAILABLE and self.clients:
+                raw = json.dumps(self.clients).encode()
+                enc = Fernet(_derive_client_key()).encrypt(raw)
+                settings['clients_enc'] = base64.b64encode(enc).decode()
+            else:
+                settings['clients'] = self.clients
             with open(self.config.APP_DATA_FILE, 'w', encoding='utf-8') as f:
                 json.dump(settings, f, indent=2)
             self._save_daily_stats()
@@ -2267,6 +2304,28 @@ Client     : {client}
         if len(self.tabs) == 0:
             self.new_tab()
 
+    def _close_cleared_tab(self, frame):
+        """Close a tab that was auto-cleared by COPY_CLEAR — no confirmation needed."""
+        try:
+            tab_id = str(frame)
+            if tab_id not in self.notebook.tabs():
+                return
+            title    = self.notebook.tab(frame, "text")
+            filepath = self.current_file_paths.get(tab_id)
+            self._closed_tabs.append((title, "", filepath))
+            self._closed_tabs = self._closed_tabs[-15:]
+            self.tabs.pop(frame, None)
+            self.current_file_paths.pop(tab_id, None)
+            self._pinned_tabs.discard(frame)
+            self._bookmarks.pop(frame, None)
+            self._tab_colour_images.pop(frame, None)
+            self._tab_timers.pop(frame, None)
+            self.notebook.forget(frame)
+            if not self.tabs:
+                self.new_tab()
+        except Exception:
+            pass
+
     def on_tab_changed(self, event):
         self.update_status("Tab changed")
         self._reposition_close_buttons()
@@ -2993,7 +3052,11 @@ Client     : {client}
                 text_widget.delete("1.0", "end")
                 self._tab_copy_counts[current_frame] = 0
                 self.validation_label.config(text="Copied & Cleared", fg="green")
-                self.update_status(f"Copied safely — note cleared (copy #{cnt})")
+                if current_frame not in self._pinned_tabs:
+                    self.update_status(f"Copied safely — note cleared & tab closing (copy #{cnt})")
+                    self.root.after(200, lambda f=current_frame: self._close_cleared_tab(f))
+                else:
+                    self.update_status(f"Copied safely — note cleared; tab pinned so kept open (copy #{cnt})")
             else:
                 self.validation_label.config(text=f"Copied ({cnt}x)", fg="green")
                 self.update_status(f"Text copied safely (copy #{cnt} for this tab)")
@@ -4493,6 +4556,14 @@ Client     : {client}
     def create_clients_tab(self, parent):
         ttk.Label(parent, text="Register clients and their identifiers for cross-contamination detection:").pack(
             anchor="w", padx=10, pady=(8, 4))
+        if CLIENTS_ENC_AVAILABLE:
+            enc_text = "🔒 Client identifiers are machine-bound encrypted on disk"
+            enc_fg   = "green"
+        else:
+            enc_text = "⚠ Plaintext storage — install cryptography package for at-rest encryption"
+            enc_fg   = "orange"
+        ttk.Label(parent, text=enc_text, foreground=enc_fg,
+                  font=("Arial", 8)).pack(anchor="w", padx=10, pady=(0, 4))
         pane = tk.Frame(parent)
         pane.pack(fill="both", expand=True, padx=10, pady=4)
         left = tk.Frame(pane)
