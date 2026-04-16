@@ -1,5 +1,8 @@
 import type { Metadata, Viewport } from 'next'
+import { Inter } from 'next/font/google'
 import './globals.css'
+
+const inter = Inter({ subsets: ['latin'], display: 'swap' })
 
 const APP_NAME = process.env.NEXT_PUBLIC_APP_NAME ?? 'Repair Shop'
 
@@ -26,7 +29,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className="dark">
+    <html lang="en" className={inter.className}>
       <body className="bg-bg text-fg antialiased">
         {children}
       </body>
