@@ -1,0 +1,101 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# job-applicator configuration
+# Copy this file to config.yaml and fill in your details before running:
+#   cp config.yaml.example config.yaml
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Job titles / role keywords to search LinkedIn for.
+# Each entry generates a separate search pass.
+target_roles:
+  - "Security Analyst"
+  - "SOC Analyst"
+  - "Threat Intelligence Analyst"
+
+# ── Filters ────────────────────────────────────────────────────────────────
+filters:
+  # Minimum/maximum annual salary (USD). Set to null to skip salary filtering.
+  # Jobs without salary data are included unless filter_undisclosed_salary: true
+  salary_min: 60000
+  salary_max: 130000
+
+  # Set true to exclude jobs that don't disclose salary information at all.
+  filter_undisclosed_salary: false
+
+  # Preferred locations (city, state, or country strings).
+  # Matched as case-insensitive substrings against the job's location text.
+  # Ignored when remote_preference is "remote".
+  locations:
+    - "New York"
+    - "Remote"
+    - "Austin, TX"
+
+  # One of: remote | hybrid | onsite | any
+  remote_preference: any
+
+  # One or more of: full-time | part-time | contract | internship
+  job_types:
+    - full-time
+    - contract
+
+  # Jobs are rejected if any of these strings appear (case-insensitive) in
+  # the job title, company name, or description snippet.
+  exclude_keywords:
+    - "clearance required"
+    - "TS/SCI"
+    - "unpaid"
+
+# ── LinkedIn Credentials ───────────────────────────────────────────────────
+linkedin:
+  email: "your.email@example.com"
+  password: "your_linkedin_password"
+
+  # Path to your PDF CV — relative to the job-applicator/ directory.
+  cv_path: "cv/my_cv.pdf"
+
+  # Playwright session storage path. Reusing sessions avoids repeated logins.
+  session_path: ".linkedin_session"
+
+# ── Email Notifications ────────────────────────────────────────────────────
+email_notifications:
+  # Set to false to disable email notifications entirely.
+  enabled: true
+
+  smtp_host: "smtp.gmail.com"
+  smtp_port: 587                        # 587 = STARTTLS, 465 = SSL
+  smtp_user: "your.email@example.com"
+  smtp_password: "your_app_password"    # For Gmail: use an App Password
+  from_address: "your.email@example.com"
+  to_address: "your.email@example.com"
+
+  # {date} is replaced with today's date (YYYY-MM-DD).
+  subject_template: "Job Applicator — Manual Apply Required ({date})"
+
+# ── Application Settings ───────────────────────────────────────────────────
+application_settings:
+  # Skip to manual-apply list if Easy Apply form has more than this many
+  # open-ended / custom questions the tool can't prefill automatically.
+  max_custom_questions: 3
+
+  # Maximum applications submitted per run (0 = unlimited).
+  max_applications_per_run: 20
+
+  # Human-like random delay between individual actions (seconds).
+  min_delay: 2.0
+  max_delay: 6.0
+
+  # Extra pause between each job application (seconds).
+  inter_application_delay: 15.0
+
+  # When true: go through all steps but do NOT click Submit.
+  # Equivalent to passing --dry-run on the command line.
+  dry_run: false
+
+  # How many LinkedIn search result pages to scrape per role.
+  max_pages_per_role: 5
+
+  # SQLite database file for tracking applied/pending jobs.
+  db_path: "jobs.db"
+
+  # Run Chromium in headless mode. Set false to watch the browser
+  # or to handle MFA/CAPTCHA interactively.
+  headless: true

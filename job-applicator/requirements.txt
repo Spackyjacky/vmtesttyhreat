@@ -1,0 +1,12 @@
+# Browser automation
+playwright>=1.43.0
+playwright-stealth>=1.0.6
+
+# Config parsing
+PyYAML>=6.0.1
+
+# PDF reading (CV text extraction for form field prefill)
+pdfplumber>=0.11.0
+
+# Testing
+pytest>=8.0.0

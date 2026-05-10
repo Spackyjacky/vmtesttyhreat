@@ -10,3 +10,12 @@ src/session.json
 src/note_history.json
 src/recent_files.txt
 src/custom_dict.txt
+
+# job-applicator runtime files
+job-applicator/jobs.db
+job-applicator/search_results.json
+job-applicator/job_applicator.log
+job-applicator/.linkedin_session/
+job-applicator/cv/*.pdf
+job-applicator/config.yaml
+job-applicator/.pytest_cache/
