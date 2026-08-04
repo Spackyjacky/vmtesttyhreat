@@ -1,0 +1,66 @@
+name: TillPoint
+options:
+  bundleIdPrefix: com.yourcompany
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+configs:
+  Debug: debug
+  Release: release
+targets:
+  TillPoint:
+    type: application
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: TillPoint
+    info:
+      path: Generated/Info.plist
+      properties:
+        CFBundleDisplayName: "TillPoint"
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+          - UIInterfaceOrientationPortrait
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+        UIRequiresFullScreen: true
+        NSBluetoothAlwaysUsageDescription: "TillPoint uses Bluetooth to connect to your receipt printer and barcode scanner."
+        NSBluetoothPeripheralUsageDescription: "TillPoint uses Bluetooth to connect to your receipt printer and barcode scanner."
+        NSCameraUsageDescription: "TillPoint can use the camera to scan product barcodes."
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.yourcompany.tillpoint
+        TARGETED_DEVICE_FAMILY: "2"
+        SWIFT_VERSION: "5.0"
+        ENABLE_PREVIEWS: true
+        DEVELOPMENT_TEAM: ""
+        CODE_SIGN_STYLE: Automatic
+  TillPointTests:
+    type: bundle.unit-test
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: TillPointTests
+    dependencies:
+      - target: TillPoint
+    settings:
+      base:
+        SWIFT_VERSION: "5.0"
+schemes:
+  TillPoint:
+    build:
+      targets:
+        TillPoint: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - TillPointTests
+    archive:
+      config: Release
