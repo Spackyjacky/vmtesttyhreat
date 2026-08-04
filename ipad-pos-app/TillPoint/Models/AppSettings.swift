@@ -15,6 +15,12 @@ final class AppSettings {
     var lastConnectedPrinterId: String?
     var printerAutoOpenDrawer: Bool = true
     var receiptEmailSubject: String = "Your Receipt"
+    var appearanceRaw: String = AppAppearance.system.rawValue
+
+    var appearance: AppAppearance {
+        get { AppAppearance(rawValue: appearanceRaw) ?? .system }
+        set { appearanceRaw = newValue.rawValue }
+    }
 
     init() {
         self.id = UUID()

@@ -16,6 +16,9 @@ struct BarcodeLabelSheet: View {
                         .interpolation(.none)
                         .resizable()
                         .frame(width: 280, height: 100)
+                        .padding(12)
+                        .background(Color.white)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
                 }
                 Text(code).font(.system(.body, design: .monospaced))
 

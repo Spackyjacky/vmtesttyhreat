@@ -16,6 +16,11 @@ final class Product {
     var createdAt: Date = Date()
     var notes: String?
 
+    /// When false, the product is hidden from the Till grid — still fully
+    /// findable by scanning its barcode or by name/SKU search. Useful for
+    /// barcoded stock you don't want cluttering the home screen.
+    var showOnHomeScreen: Bool = true
+
     var category: Category?
 
     init(
@@ -27,6 +32,7 @@ final class Product {
         stockQuantity: Int = 0,
         lowStockThreshold: Int = 5,
         taxRatePercent: Double = 0,
+        showOnHomeScreen: Bool = true,
         category: Category? = nil
     ) {
         self.id = UUID()
@@ -38,6 +44,7 @@ final class Product {
         self.stockQuantity = stockQuantity
         self.lowStockThreshold = lowStockThreshold
         self.taxRatePercent = taxRatePercent
+        self.showOnHomeScreen = showOnHomeScreen
         self.category = category
         self.createdAt = Date()
     }

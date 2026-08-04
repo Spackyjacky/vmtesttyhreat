@@ -10,21 +10,15 @@ struct CheckoutSheet: View {
     @EnvironmentObject private var printerManager: BluetoothPrinterManager
 
     @State private var paymentMethod: PaymentMethod = .cash
-    @State private var cashTenderedText: String = ""
+    @State private var cashTenderedCentsState: Int = 0
     @State private var completedSale: Sale?
 
     private var totalCents: Int {
         cart.reduce(0) { $0 + $1.lineTotalCents }
     }
 
-    private var cashTenderedCents: Int? {
-        guard let value = Double(cashTenderedText) else { return nil }
-        return Int((value * 100).rounded())
-    }
-
     private var changeDueCents: Int {
-        guard let tendered = cashTenderedCents else { return 0 }
-        return max(0, tendered - totalCents)
+        max(0, cashTenderedCentsState - totalCents)
     }
 
     var body: some View {
@@ -33,35 +27,42 @@ struct CheckoutSheet: View {
                 PostSaleActionsView(sale: sale, settings: settings, onDone: { dismiss() })
                     .environmentObject(printerManager)
             } else {
-                Form {
-                    Section("Total") {
+                VStack(spacing: 16) {
+                    VStack(spacing: 4) {
+                        Text("Total Due")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                         Text(CurrencyFormatter.string(fromCents: totalCents, currencyCode: settings.currencyCode))
-                            .font(.system(size: 40, weight: .bold))
+                            .font(.system(size: 44, weight: .bold))
                     }
+                    .padding(.top)
 
-                    Section("Payment Method") {
-                        Picker("Payment Method", selection: $paymentMethod) {
-                            ForEach(PaymentMethod.allCases) { method in
-                                Text(method.displayName).tag(method)
-                            }
+                    Picker("Payment Method", selection: $paymentMethod) {
+                        ForEach(PaymentMethod.allCases) { method in
+                            Text(method.displayName).tag(method)
                         }
-                        .pickerStyle(.segmented)
                     }
+                    .pickerStyle(.segmented)
+                    .padding(.horizontal)
 
                     if paymentMethod == .cash {
-                        Section("Cash Tendered") {
-                            TextField("Amount received", text: $cashTenderedText)
-                                .keyboardType(.decimalPad)
-                            if cashTenderedCents != nil {
-                                HStack {
-                                    Text("Change Due")
-                                    Spacer()
-                                    Text(CurrencyFormatter.string(fromCents: changeDueCents, currencyCode: settings.currencyCode))
-                                        .bold()
-                                }
-                            }
+                        HStack {
+                            Text("Change Due")
+                            Spacer()
+                            Text(CurrencyFormatter.string(fromCents: changeDueCents, currencyCode: settings.currencyCode))
+                                .font(.title3.bold())
                         }
+                        .padding(.horizontal)
+
+                        CashKeypadView(
+                            amountCents: $cashTenderedCentsState,
+                            totalCents: totalCents,
+                            currencyCode: settings.currencyCode
+                        )
+                        .padding(.horizontal)
                     }
+
+                    Spacer(minLength: 0)
                 }
                 .navigationTitle("Checkout")
                 .toolbar {
@@ -70,7 +71,7 @@ struct CheckoutSheet: View {
                     }
                     ToolbarItem(placement: .confirmationAction) {
                         Button("Complete Sale") { completeSale() }
-                            .disabled(paymentMethod == .cash && (cashTenderedCents ?? 0) < totalCents)
+                            .disabled(paymentMethod == .cash && cashTenderedCentsState < totalCents)
                     }
                 }
             }
@@ -82,7 +83,7 @@ struct CheckoutSheet: View {
         let sale = saleService.completeSale(
             cartItems: cart,
             paymentMethod: paymentMethod,
-            cashTenderedCents: paymentMethod == .cash ? cashTenderedCents : nil,
+            cashTenderedCents: paymentMethod == .cash ? cashTenderedCentsState : nil,
             operatorName: nil,
             customerEmail: nil
         )

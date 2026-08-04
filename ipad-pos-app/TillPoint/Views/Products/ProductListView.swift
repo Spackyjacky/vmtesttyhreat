@@ -25,7 +25,17 @@ struct ProductListView: View {
                 } label: {
                     HStack {
                         VStack(alignment: .leading) {
-                            Text(product.name).foregroundStyle(.primary)
+                            HStack(spacing: 6) {
+                                Text(product.name).foregroundStyle(.primary)
+                                if !product.showOnHomeScreen {
+                                    Text("Scan only")
+                                        .font(.caption2.bold())
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(Color.secondary.opacity(0.15))
+                                        .clipShape(Capsule())
+                                }
+                            }
                             Text("SKU: \(product.sku)  \u{2022}  \(product.barcode ?? "No barcode")")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)

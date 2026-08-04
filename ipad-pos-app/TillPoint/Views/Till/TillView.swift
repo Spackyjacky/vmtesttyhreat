@@ -15,7 +15,9 @@ struct TillView: View {
 
     private var filteredProducts: [Product] {
         let active = products.filter { $0.isActive }
-        guard !searchText.isEmpty else { return active }
+        guard !searchText.isEmpty else {
+            return active.filter { $0.showOnHomeScreen }
+        }
         return active.filter {
             $0.name.localizedCaseInsensitiveContains(searchText) ||
             $0.sku.localizedCaseInsensitiveContains(searchText) ||

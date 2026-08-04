@@ -17,6 +17,7 @@ struct ProductEditView: View {
     @State private var stockQuantityText = ""
     @State private var lowStockThresholdText = "5"
     @State private var taxRateText = "20"
+    @State private var showOnHomeScreen = true
     @State private var selectedCategory: Category?
     @State private var showBarcodeSheet = false
     @State private var showScanner = false
@@ -33,6 +34,12 @@ struct ProductEditView: View {
                             Text(category.name).tag(Category?.some(category))
                         }
                     }
+                }
+
+                Section {
+                    Toggle("Show on Till home screen", isOn: $showOnHomeScreen)
+                } footer: {
+                    Text("Turn this off for scan-only items you don't want cluttering the till grid \u{2014} they'll still ring up instantly by scanning or searching their barcode/SKU.")
                 }
 
                 Section("Barcode") {
@@ -120,6 +127,7 @@ struct ProductEditView: View {
         stockQuantityText = String(product.stockQuantity)
         lowStockThresholdText = String(product.lowStockThreshold)
         taxRateText = String(product.taxRatePercent)
+        showOnHomeScreen = product.showOnHomeScreen
         selectedCategory = product.category
     }
 
@@ -144,6 +152,7 @@ struct ProductEditView: View {
             product.stockQuantity = stockQuantity
             product.lowStockThreshold = lowStockThreshold
             product.taxRatePercent = taxRate
+            product.showOnHomeScreen = showOnHomeScreen
             product.category = selectedCategory
         } else {
             let newProduct = Product(
@@ -155,6 +164,7 @@ struct ProductEditView: View {
                 stockQuantity: stockQuantity,
                 lowStockThreshold: lowStockThreshold,
                 taxRatePercent: taxRate,
+                showOnHomeScreen: showOnHomeScreen,
                 category: selectedCategory
             )
             modelContext.insert(newProduct)

@@ -44,6 +44,15 @@ struct SettingsView: View {
                 }
             }
 
+            Section("Appearance") {
+                Picker("Appearance", selection: appearanceBinding()) {
+                    ForEach(AppAppearance.allCases) { option in
+                        Text(option.displayName).tag(option)
+                    }
+                }
+                .pickerStyle(.segmented)
+            }
+
             Section("Hardware") {
                 NavigationLink("Printer & Cash Drawer") { PrinterSetupView() }
             }
@@ -53,7 +62,7 @@ struct SettingsView: View {
             }
 
             Section("Till Session") {
-                NavigationLink("Open / Close Till") { TillSessionView() }
+                NavigationLink("Cashing Up") { TillSessionView() }
             }
         }
         .navigationTitle("Settings")
@@ -69,5 +78,12 @@ struct SettingsView: View {
 
     private func bindingForDouble(_ keyPath: ReferenceWritableKeyPath<AppSettings, Double>) -> Binding<Double> {
         Binding(get: { settings[keyPath: keyPath] }, set: { settings[keyPath: keyPath] = $0; try? modelContext.save() })
+    }
+
+    private func appearanceBinding() -> Binding<AppAppearance> {
+        Binding(
+            get: { settings.appearance },
+            set: { settings.appearance = $0; try? modelContext.save() }
+        )
     }
 }

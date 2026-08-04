@@ -42,7 +42,7 @@ struct ReportsView: View {
             }
 
             Section {
-                NavigationLink("Open / Close Till") { TillSessionView() }
+                NavigationLink("Cashing Up") { TillSessionView() }
             }
         }
         .navigationTitle("Reports")

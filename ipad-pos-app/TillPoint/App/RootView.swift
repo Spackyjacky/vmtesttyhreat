@@ -29,6 +29,8 @@ struct RootView: View {
     @StateObject private var printerManager = BluetoothPrinterManager()
     @State private var selection: AppSection? = .till
 
+    private var settings: AppSettings { settingsList.first ?? AppSettings() }
+
     var body: some View {
         NavigationSplitView {
             List(AppSection.allCases, selection: $selection) { section in
@@ -48,6 +50,7 @@ struct RootView: View {
             }
         }
         .environmentObject(printerManager)
+        .preferredColorScheme(settings.appearance.colorScheme)
         .task { ensureSettingsExist() }
     }
 

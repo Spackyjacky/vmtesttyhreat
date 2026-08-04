@@ -45,10 +45,13 @@ sales, settings) is stored locally on the iPad using SwiftData.
 ## What's implemented
 
 - **Till / checkout** — product grid with search, cart, cash/card/other
-  payment, cash tendered & change calculation, receipt printing and cash
-  drawer trigger on sale completion.
+  payment, an on-screen cash keypad with quick "notes handed over" buttons
+  (Exact, £5/£10/£20/£50) for fast cash tendered entry, automatic change
+  calculation, receipt printing and cash drawer trigger on sale completion.
 - **Products** — add/edit/delete, price, cost, tax rate, category, stock
-  quantity, low-stock threshold, barcode field.
+  quantity, low-stock threshold, barcode field, and a **"Show on Till home
+  screen"** toggle — turn it off for scan-only items you don't want
+  cluttering the grid; they still ring up instantly by scan or search.
 - **Barcode generation** — products with no barcode can get one generated
   on the spot (a GS1 in-store-use-range EAN-13-style number, rendered and
   printed as a CODE128 barcode) and printed as a label on your receipt
@@ -58,8 +61,18 @@ sales, settings) is stored locally on the iPad using SwiftData.
   trail (`StockAdjustment` records). Stock is automatically decremented on
   sale and restored on void.
 - **Sales history** — past receipts, reprint, email, void (restores stock).
-- **Reports** — today's takings by payment method, top sellers, and a
-  basic till float open/close (cash-up) flow.
+- **Reports** — today's takings by payment method and top sellers.
+- **Cashing up (Z-report)** — open the till with a starting float, watch
+  live takings (transaction count, cash/card/other, expected cash in
+  drawer) build up through the day, count the drawer at close using the
+  same on-screen keypad, and get an instant over/short variance. Every
+  closed session produces a full reconciliation report and stays in a
+  "Past Sessions" history you can reopen any time.
+- **Exportable stock report** — a CSV export from the Stock screen, with a
+  choice of **All Stock** or **Low Stock Items Only**, handed to iOS's
+  share sheet (save to Files, AirDrop, email, print, etc).
+- **Dark mode** — System/Light/Dark appearance switch in Settings, on top
+  of the app already using adaptive system colors throughout.
 - **Bluetooth barcode scanner** — works out of the box with the vast
   majority of BLE (and USB) barcode scanners because they present themselves
   to iOS as a Bluetooth **keyboard** ("HID keyboard wedge"). Pair the
