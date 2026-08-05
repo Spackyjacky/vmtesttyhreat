@@ -1,24 +1,25 @@
 import type { Metadata, Viewport } from 'next'
 import './globals.css'
 
-const APP_NAME = process.env.NEXT_PUBLIC_APP_NAME ?? 'Repair Shop'
+const APP_NAME = process.env.NEXT_PUBLIC_APP_NAME ?? '404 Fixed'
 
 export const metadata: Metadata = {
   title: {
-    default: APP_NAME,
+    default: `${APP_NAME} — Computer Repair & IT Support`,
     template: `%s | ${APP_NAME}`,
   },
-  description: 'Professional repair shop management system',
+  description:
+    'Trusted computer repair, printer support, home networking and IT support — for homes and businesses.',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
-    statusBarStyle: 'black-translucent',
+    statusBarStyle: 'default',
     title: APP_NAME,
   },
 }
 
 export const viewport: Viewport = {
-  themeColor: '#dc2626',
+  themeColor: '#0F172A',
   width: 'device-width',
   initialScale: 1,
   maximumScale: 1,
@@ -26,8 +27,8 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className="dark">
-      <body className="bg-bg text-fg antialiased">
+    <html lang="en">
+      <body className="antialiased bg-white text-brand-ink">
         {children}
       </body>
     </html>

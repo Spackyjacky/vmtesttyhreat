@@ -9,7 +9,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   if (!user) redirect('/login')
 
   return (
-    <div className="min-h-screen bg-bg">
+    <div className="dashboard-scope min-h-screen bg-bg text-fg">
       <Sidebar userEmail={user.email} />
       {/* Main content — offset for sidebar on desktop, top bar on mobile */}
       <main className="lg:pl-64 pt-14 lg:pt-0 min-h-screen">
