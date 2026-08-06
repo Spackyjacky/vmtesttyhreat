@@ -6,6 +6,9 @@ import { CONTACT_EMAIL, SERVICE_AREA, SUMUP_BOOKING_URL } from '@/lib/site'
 export const metadata: Metadata = {
   title: 'Contact',
   description: `Get in touch for IT support, network installs or WiFi help across ${SERVICE_AREA}.`,
+  alternates: {
+    canonical: '/contact',
+  },
 }
 
 export default function ContactPage() {

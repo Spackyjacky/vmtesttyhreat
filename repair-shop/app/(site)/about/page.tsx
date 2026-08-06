@@ -6,6 +6,9 @@ import { SERVICE_AREA, SUMUP_BOOKING_URL } from '@/lib/site'
 export const metadata: Metadata = {
   title: 'How it works',
   description: `IT problems don't wait, neither do we. IT support, network installs and WiFi help across ${SERVICE_AREA}.`,
+  alternates: {
+    canonical: '/about',
+  },
 }
 
 const VALUES = [

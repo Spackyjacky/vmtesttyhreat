@@ -1,8 +1,11 @@
 import type { Metadata, Viewport } from 'next'
 import { Space_Grotesk, Inter, JetBrains_Mono } from 'next/font/google'
+import { SITE_URL } from '@/lib/site'
 import './globals.css'
 
 const APP_NAME = process.env.NEXT_PUBLIC_APP_NAME ?? '404 Fixed'
+const DESCRIPTION =
+  '404 Fixed: fast, reliable IT support, network installs and WiFi troubleshooting for homes and businesses across Cardiff and Penarth. Check your postcode and book in minutes.'
 
 const spaceGrotesk = Space_Grotesk({
   subsets: ['latin'],
@@ -24,17 +27,27 @@ const jetbrainsMono = JetBrains_Mono({
 })
 
 export const metadata: Metadata = {
+  metadataBase: new URL(SITE_URL),
   title: {
     default: `${APP_NAME} | IT Support, Network Installs & WiFi — Cardiff & Penarth`,
     template: `%s | ${APP_NAME}`,
   },
-  description:
-    '404 Fixed: fast, reliable IT support, network installs and WiFi troubleshooting for homes and businesses across Cardiff and Penarth. Check your postcode and book in minutes.',
-  manifest: '/manifest.json',
-  appleWebApp: {
-    capable: true,
-    statusBarStyle: 'default',
-    title: APP_NAME,
+  description: DESCRIPTION,
+  alternates: {
+    canonical: '/',
+  },
+  openGraph: {
+    type: 'website',
+    siteName: APP_NAME,
+    locale: 'en_GB',
+    url: '/',
+    title: `${APP_NAME} | IT Support, Network Installs & WiFi — Cardiff & Penarth`,
+    description: DESCRIPTION,
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: `${APP_NAME} | IT Support, Network Installs & WiFi — Cardiff & Penarth`,
+    description: DESCRIPTION,
   },
 }
 

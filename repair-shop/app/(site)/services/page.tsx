@@ -7,6 +7,9 @@ import { SUMUP_BOOKING_URL } from '@/lib/site'
 export const metadata: Metadata = {
   title: 'Services',
   description: 'IT support, network installs and WiFi help across Cardiff & Penarth.',
+  alternates: {
+    canonical: '/services',
+  },
 }
 
 export default function ServicesPage() {

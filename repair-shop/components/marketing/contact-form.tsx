@@ -9,6 +9,7 @@ const fieldClass =
 
 export default function ContactForm() {
   const [status, setStatus] = useState<'idle' | 'submitting' | 'sent' | 'error'>('idle')
+  const [errorMessage, setErrorMessage] = useState('')
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -21,6 +22,7 @@ export default function ContactForm() {
       phone: form.get('phone'),
       service: form.get('service'),
       message: form.get('message'),
+      company: form.get('company'),
     }
 
     try {
@@ -29,9 +31,13 @@ export default function ContactForm() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       })
-      if (!res.ok) throw new Error('Failed to send')
+      const data = await res.json().catch(() => null)
+      if (!res.ok || !data?.ok) {
+        throw new Error(data?.error || 'Failed to send')
+      }
       setStatus('sent')
-    } catch {
+    } catch (err) {
+      setErrorMessage(err instanceof Error ? err.message : '')
       setStatus('error')
     }
   }
@@ -44,7 +50,7 @@ export default function ContactForm() {
         </span>
         <h3 className="mt-4 text-lg font-semibold text-brand-white">Thanks — message sent</h3>
         <p className="mt-2 text-sm text-brand-muted">
-          We'll get back to you as soon as we can, usually within one working day.
+          We&apos;ll get back to you as soon as we can, usually within one working day.
         </p>
       </div>
     )
@@ -52,6 +58,12 @@ export default function ContactForm() {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
+      {/* Honeypot — hidden from real users, catches simple bots that fill every field */}
+      <div className="absolute left-[-9999px] top-auto h-0 w-0 overflow-hidden" aria-hidden="true">
+        <label htmlFor="company">Company</label>
+        <input id="company" name="company" type="text" tabIndex={-1} autoComplete="off" />
+      </div>
+
       <div className="grid gap-5 sm:grid-cols-2">
         <div>
           <label htmlFor="name" className="mb-1.5 block text-sm font-medium text-brand-white">
@@ -94,7 +106,7 @@ export default function ContactForm() {
 
       <div>
         <label htmlFor="message" className="mb-1.5 block text-sm font-medium text-brand-white">
-          What's going on?
+          What&apos;s going on?
         </label>
         <textarea
           id="message"
@@ -108,7 +120,7 @@ export default function ContactForm() {
 
       {status === 'error' && (
         <p className="text-sm text-brand-amber">
-          Something went wrong sending your message — please try again or email us directly.
+          {errorMessage || 'Something went wrong sending your message — please try again or email us directly.'}
         </p>
       )}
 

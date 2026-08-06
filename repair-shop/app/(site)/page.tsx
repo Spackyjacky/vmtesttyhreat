@@ -1,8 +1,16 @@
 import Link from 'next/link'
+import type { Metadata } from 'next'
 import { services } from '@/lib/services'
 import { SERVICE_ICONS, ArrowRightIcon, ClockIcon, ShieldIcon, ITSupportIcon, WifiIcon, TickIcon } from '@/components/marketing/icons'
 import PostcodeChecker from '@/components/marketing/postcode-checker'
-import { COVERED_DISTRICTS, SUMUP_BOOKING_URL } from '@/lib/site'
+import { COVERED_DISTRICTS, SUMUP_BOOKING_URL, SERVICE_AREA } from '@/lib/site'
+
+export const metadata: Metadata = {
+  alternates: {
+    canonical: '/',
+  },
+  description: `404 Fixed delivers fast, no-nonsense IT support, network installs and WiFi troubleshooting for homes and businesses across ${SERVICE_AREA}. Check your postcode and book in minutes.`,
+}
 
 const TRUST_ITEMS = [
   { icon: ClockIcon, label: 'Fast response' },

@@ -1,3 +1,4 @@
+export const SITE_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://404fixed.co.uk'
 export const SUMUP_BOOKING_URL = 'https://www.sumupbookings.com/404-fixed'
 export const CONTACT_EMAIL = process.env.NEXT_PUBLIC_SHOP_EMAIL ?? 'hello@404fixed.co.uk'
 export const SERVICE_AREA = 'Cardiff & Penarth'
