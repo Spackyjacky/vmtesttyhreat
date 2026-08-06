@@ -70,7 +70,7 @@ export default function CollectPage({ params }: { params: Promise<{ id: string }
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-bg flex items-center justify-center">
+      <div className="dashboard-scope min-h-screen bg-bg flex items-center justify-center">
         <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
       </div>
     )
@@ -78,7 +78,7 @@ export default function CollectPage({ params }: { params: Promise<{ id: string }
 
   if (notFound || !job) {
     return (
-      <div className="min-h-screen bg-bg flex items-center justify-center p-4">
+      <div className="dashboard-scope min-h-screen bg-bg flex items-center justify-center p-4">
         <div className="text-center">
           <h1 className="text-2xl font-bold text-fg mb-2">Job not found</h1>
           <p className="text-muted">This link may be invalid or the job may have already been collected.</p>
@@ -88,7 +88,7 @@ export default function CollectPage({ params }: { params: Promise<{ id: string }
   }
 
   return (
-    <div className="min-h-screen bg-bg">
+    <div className="dashboard-scope min-h-screen bg-bg">
       {/* Header */}
       <header className="bg-surface border-b border-border px-4 py-4 flex items-center justify-center gap-3">
         <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">

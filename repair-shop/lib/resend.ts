@@ -1,10 +1,74 @@
 import { Resend } from 'resend'
 
-const resend = new Resend(process.env.RESEND_API_KEY)
+function getResendClient() {
+  return new Resend(process.env.RESEND_API_KEY)
+}
 
 const FROM = `${process.env.RESEND_FROM_NAME ?? 'Repair Shop'} <${process.env.RESEND_FROM_EMAIL ?? 'noreply@example.com'}>`
 const SHOP_NAME = process.env.NEXT_PUBLIC_APP_NAME ?? 'Repair Shop'
 const SHOP_PHONE = process.env.NEXT_PUBLIC_SHOP_PHONE ?? ''
+const SHOP_EMAIL = process.env.NEXT_PUBLIC_SHOP_EMAIL ?? process.env.RESEND_FROM_EMAIL ?? ''
+
+export async function sendContactEnquiryEmail(enquiry: {
+  name: string
+  email: string
+  phone?: string
+  service?: string
+  message: string
+}): Promise<boolean> {
+  if (!process.env.RESEND_API_KEY || !SHOP_EMAIL) {
+    console.warn('Resend not configured — skipping contact enquiry email')
+    return false
+  }
+
+  try {
+    const html = `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;background:#F6F8FB;font-family:system-ui,sans-serif;color:#0F172A;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="padding:40px 20px;">
+    <tr><td align="center">
+      <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #E4E9F1;">
+        <tr>
+          <td style="padding:28px 32px;background:#0B1220;">
+            <h1 style="margin:0;font-size:18px;color:#ffffff;">New website enquiry</h1>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:32px;">
+            <p style="margin:0 0 10px;"><strong>Name:</strong> ${enquiry.name}</p>
+            <p style="margin:0 0 10px;"><strong>Email:</strong> ${enquiry.email}</p>
+            ${enquiry.phone ? `<p style="margin:0 0 10px;"><strong>Phone:</strong> ${enquiry.phone}</p>` : ''}
+            ${enquiry.service ? `<p style="margin:0 0 10px;"><strong>Service:</strong> ${enquiry.service}</p>` : ''}
+            <p style="margin:16px 0 6px;"><strong>Message:</strong></p>
+            <p style="margin:0;white-space:pre-wrap;line-height:1.6;">${enquiry.message}</p>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`
+
+    const { error } = await getResendClient().emails.send({
+      from: FROM,
+      to: SHOP_EMAIL,
+      reply_to: enquiry.email,
+      subject: `${SHOP_NAME} — New enquiry from ${enquiry.name}`,
+      html,
+    })
+
+    if (error) {
+      console.error('Resend error:', error)
+      return false
+    }
+    return true
+  } catch (err) {
+    console.error('Contact enquiry email failed:', err)
+    return false
+  }
+}
 
 export async function sendStatusEmail(
   to: string,
@@ -81,7 +145,7 @@ export async function sendStatusEmail(
 </body>
 </html>`
 
-    const { error } = await resend.emails.send({
+    const { error } = await getResendClient().emails.send({
       from: FROM,
       to,
       subject: `${SHOP_NAME} — Repair Update for ${ticketNumber}`,

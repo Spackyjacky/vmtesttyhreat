@@ -1,7 +1,7 @@
 {
-  "name": "Repair Shop",
-  "short_name": "Repair Shop",
-  "description": "Professional repair shop management system",
+  "name": "404 Fixed — Staff App",
+  "short_name": "404 Fixed",
+  "description": "Job management app for 404 Fixed staff",
   "start_url": "/dashboard",
   "display": "standalone",
   "orientation": "any",
