@@ -1,0 +1,42 @@
+location:
+  city: Cardiff
+  # eBay's search API doesn't support a clean "radius from postcode" filter,
+  # so results are filtered client-side by matching the item's city/postcode
+  # against this list. Add nearby towns you'd also collect for.
+  ebay_accepted_locations:
+    - Cardiff
+    - Penarth
+    - Barry
+    - Newport
+    - Caerphilly
+    - CF
+
+search_terms:
+  - pine chest of drawers
+  - pine drawers
+  - sideboard
+  - pine sideboard
+  - dresser
+  - welsh dresser
+  - sofa
+  - 2 seater sofa
+  - 3 seater sofa
+  - armchair
+  - coffee table
+  - wardrobe
+
+price:
+  min: 0
+  max: 500
+
+ebay:
+  marketplace_id: EBAY_GB
+  # Optional: eBay category ID to narrow results (e.g. Furniture).
+  # Leave blank to rely on keyword search alone — verify the ID on
+  # developer.ebay.com before relying on it, category IDs do change.
+  category_ids: ""
+
+facebook:
+  headless: true
+  max_scrolls: 6
+  delay_seconds_between_terms: 8
