@@ -1,0 +1,10 @@
+opencv-python-headless>=4.9
+numpy>=1.26
+ultralytics>=8.2
+fast-alpr>=0.2
+onnxruntime>=1.17
+fastapi>=0.111
+uvicorn[standard]>=0.29
+jinja2>=3.1
+python-multipart>=0.0.9
+pyyaml>=6.0

@@ -10,3 +10,9 @@ src/session.json
 src/note_history.json
 src/recent_files.txt
 src/custom_dict.txt
+
+# Reolink ANPR runtime data (captured images/DB, venv)
+reolink-anpr/venv/
+reolink-anpr/captures/
+reolink-anpr/captures.db
+reolink-anpr/captures.db-*

@@ -1,0 +1,8 @@
+[Unit]
+Description=Reolink ANPR retention cleanup
+
+[Service]
+Type=oneshot
+User=pi
+WorkingDirectory=/home/pi/reolink-anpr
+ExecStart=/home/pi/reolink-anpr/venv/bin/python cleanup.py

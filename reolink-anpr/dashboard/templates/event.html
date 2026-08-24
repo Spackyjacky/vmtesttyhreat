@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reolink ANPR — Event {{ event.id }}</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font-family: system-ui, sans-serif; margin: 0; padding: 1rem; background: #111; color: #eee; }
+  a.back { color: #7ea1ff; text-decoration: none; }
+  h1 { font-size: 1.4rem; margin: 1rem 0; }
+  .images { display: flex; flex-wrap: wrap; gap: 1rem; margin-bottom: 1.5rem; }
+  .images figure { margin: 0; background: #1c1c1c; border-radius: 8px; overflow: hidden; }
+  .images img { max-width: 360px; max-height: 360px; display: block; }
+  .images figcaption { padding: 0.4rem 0.6rem; font-size: 0.8rem; color: #999; }
+  dl { display: grid; grid-template-columns: max-content 1fr; gap: 0.3rem 1rem; }
+  dt { color: #999; }
+</style>
+</head>
+<body>
+  <a class="back" href="/">&larr; back to search</a>
+  <h1>{{ event.plate or "Unread plate" }}</h1>
+
+  <div class="images">
+    <figure>
+      <img src="/captures/{{ event.vehicle_image_path }}" alt="vehicle crop">
+      <figcaption>Vehicle</figcaption>
+    </figure>
+    {% if event.plate_image_path %}
+    <figure>
+      <img src="/captures/{{ event.plate_image_path }}" alt="plate crop">
+      <figcaption>Plate</figcaption>
+    </figure>
+    {% endif %}
+    <figure>
+      <img src="/captures/{{ event.full_image_path }}" alt="full frame">
+      <figcaption>Full frame</figcaption>
+    </figure>
+  </div>
+
+  <dl>
+    <dt>Timestamp</dt><dd>{{ event.timestamp }}</dd>
+    <dt>Camera</dt><dd>{{ event.camera }}</dd>
+    <dt>Vehicle type</dt><dd>{{ event.vehicle_type or "—" }}</dd>
+    <dt>Colour</dt><dd>{{ event.color or "—" }}</dd>
+    <dt>Plate</dt><dd>{{ event.plate or "—" }}</dd>
+    <dt>Plate confidence</dt><dd>{{ "%.2f"|format(event.plate_confidence) if event.plate_confidence is not none else "—" }}</dd>
+  </dl>
+</body>
+</html>

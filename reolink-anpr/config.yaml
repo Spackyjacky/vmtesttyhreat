@@ -1,0 +1,44 @@
+# Reolink ANPR configuration
+#
+# Fill in your camera details below. RTSP credentials are the camera's local
+# admin/user account (Settings > Network > Advanced > Server Settings on the
+# Reolink app/web UI) — nothing here talks to the internet or a vendor cloud.
+
+cameras:
+  - name: cam1
+    # Standard Reolink RTSP main-stream URL. Swap host/user/pass per camera.
+    # Use the "sub" stream (h264Preview_01_sub) instead of "main" if the Pi
+    # struggles to keep up — it's lower resolution and much cheaper to decode.
+    rtsp_url: "rtsp://admin:password@192.168.1.101:554/h264Preview_01_main"
+
+  - name: cam2
+    rtsp_url: "rtsp://admin:password@192.168.1.102:554/h264Preview_01_main"
+
+  - name: cam3
+    rtsp_url: "rtsp://admin:password@192.168.1.103:554/h264Preview_01_main"
+
+  - name: cam4
+    rtsp_url: "rtsp://admin:password@192.168.1.104:554/h264Preview_01_main"
+
+capture:
+  # How often (seconds) to sample a frame for motion detection. Lower = more
+  # CPU used continuously; higher = risk of missing fast-moving vehicles.
+  sample_interval_sec: 0.5
+  # Minimum fraction of frame pixels that must change to count as motion.
+  motion_threshold: 0.015
+  # Seconds to wait after a detected event before allowing another capture
+  # on the same camera, to avoid re-capturing one vehicle several times.
+  event_cooldown_sec: 4
+  # Longest side (px) frames are downscaled to before running the vehicle
+  # detector. Keeps YOLO inference fast on a Pi 4 CPU.
+  detect_max_dim: 640
+
+storage:
+  captures_dir: "captures"
+  database_path: "captures.db"
+  # Delete images (and their DB rows) older than this many days.
+  retention_days: 30
+
+dashboard:
+  host: "0.0.0.0"
+  port: 8080

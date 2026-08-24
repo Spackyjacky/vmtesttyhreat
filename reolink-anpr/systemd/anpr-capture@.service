@@ -1,0 +1,15 @@
+[Unit]
+Description=Reolink ANPR capture worker (%i)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/reolink-anpr
+ExecStart=/home/pi/reolink-anpr/venv/bin/python capture_worker.py --camera %i
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
