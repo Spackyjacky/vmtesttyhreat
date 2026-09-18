@@ -27,6 +27,7 @@ interface OpenTab {
   id: string;
   title: string;
   state: EditorState;
+  fileHandle?: FileSystemFileHandle;
 }
 
 export class TabManager {
@@ -78,12 +79,21 @@ export class TabManager {
     return EditorState.create({ doc: content, extensions: this.buildExtensions() });
   }
 
-  createTab(title: string, content = ""): string {
+  createTab(title: string, content = "", fileHandle?: FileSystemFileHandle): string {
     const id = newTabId();
-    this.tabs.push({ id, title, state: this.createState(content) });
+    this.tabs.push({ id, title, state: this.createState(content), fileHandle });
     this.switchTab(id);
     this.onTabsUpdated();
     return id;
+  }
+
+  attachFileHandle(id: string, handle: FileSystemFileHandle): void {
+    const tab = this.tabs.find((t) => t.id === id);
+    if (tab) tab.fileHandle = handle;
+  }
+
+  getFileHandle(id: string): FileSystemFileHandle | undefined {
+    return this.tabs.find((t) => t.id === id)?.fileHandle;
   }
 
   closeTab(id: string): void {
@@ -156,9 +166,15 @@ export class TabManager {
 
   applySettings(settings: Settings): void {
     this.settings = settings;
+    // The active tab's OpenTab.state is only synced with the live view on
+    // switchTab/serialize — resync first so doc and selection can't diverge
+    // (a stale doc + a live selection past its end throws in EditorState.create).
+    const current = this.tabs.find((t) => t.id === this.activeId);
+    if (current) current.state = this.view.state;
+
     for (const tab of this.tabs) {
       const doc = tab.state.doc.toString();
-      const selection = tab.id === this.activeId ? this.view.state.selection : undefined;
+      const selection = tab.id === this.activeId ? tab.state.selection : undefined;
       tab.state = EditorState.create({ doc, extensions: this.buildExtensions(), selection });
     }
     if (this.activeId) {

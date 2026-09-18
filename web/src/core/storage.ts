@@ -1,6 +1,8 @@
 // Everything here is local-only (localStorage) by design — no network calls,
 // matching the single-user/local-only scope for the ThreatPad web port.
 
+import type { ClientMap } from "./clients";
+
 export interface TabState {
   id: string;
   title: string;
@@ -18,6 +20,7 @@ export interface Settings {
   wordWrap: boolean;
   fontSize: number;
   iocHighlighting: boolean;
+  trainingWheelsEnabled: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -26,7 +29,30 @@ export const DEFAULT_SETTINGS: Settings = {
   wordWrap: true,
   fontSize: 13,
   iocHighlighting: true,
+  trainingWheelsEnabled: false,
 };
+
+export interface Mileage {
+  sessionStart: string;
+  defangs: number;
+  iocsExtracted: number;
+  copies: number;
+  nearMisses: number;
+  contaminationChecks: number;
+  breakglassEvents: number;
+}
+
+export function defaultMileage(): Mileage {
+  return {
+    sessionStart: new Date().toISOString(),
+    defangs: 0,
+    iocsExtracted: 0,
+    copies: 0,
+    nearMisses: 0,
+    contaminationChecks: 0,
+    breakglassEvents: 0,
+  };
+}
 
 export const DEFAULT_TEMPLATES: Record<string, string> = {
   "Phishing Investigation":
@@ -53,6 +79,9 @@ const KEYS = {
   settings: "threatpad:settings",
   templates: "threatpad:templates",
   snippets: "threatpad:snippets",
+  clients: "threatpad:clients",
+  activeClient: "threatpad:activeClient",
+  mileage: "threatpad:mileage",
 } as const;
 
 function read<T>(key: string, fallback: T): T {
@@ -114,6 +143,42 @@ export function loadSnippets(): Record<string, string> {
   }
 }
 export const saveSnippets = (snippets: Record<string, string>) => write(KEYS.snippets, snippets);
+
+export function loadClients(): ClientMap {
+  try {
+    const raw = localStorage.getItem(KEYS.clients);
+    return raw ? (JSON.parse(raw) as ClientMap) : {};
+  } catch {
+    return {};
+  }
+}
+export const saveClients = (clients: ClientMap) => write(KEYS.clients, clients);
+
+export function loadActiveClient(): string {
+  try {
+    return localStorage.getItem(KEYS.activeClient) ?? "";
+  } catch {
+    return "";
+  }
+}
+export function saveActiveClient(name: string): void {
+  try {
+    localStorage.setItem(KEYS.activeClient, name);
+  } catch (e) {
+    console.error("Failed to persist active client", e);
+  }
+}
+
+export function loadMileage(): Mileage {
+  try {
+    const raw = localStorage.getItem(KEYS.mileage);
+    if (!raw) return defaultMileage();
+    return { ...defaultMileage(), ...JSON.parse(raw) };
+  } catch {
+    return defaultMileage();
+  }
+}
+export const saveMileage = (mileage: Mileage) => write(KEYS.mileage, mileage);
 
 export function fillPlaceholders(content: string): string {
   const now = new Date();

@@ -5,6 +5,14 @@ import { extractIocs, groupIocs, IOC_LABELS, type IocMatch } from "./core/iocPat
 import { base64Decode, base64Encode, generateHash, identifyHashTypes } from "./core/hashes";
 import { downloadTextFile, exportIocsCsv, exportIocsJson, exportIocsText } from "./core/exportIocs";
 import {
+  hasFileSystemAccess,
+  openFromDataTransferItem,
+  openFromInputFile,
+  pickAndOpenFile,
+  pickAndSaveFile,
+  writeToHandle,
+} from "./core/fileSystem";
+import {
   DEFAULT_SETTINGS,
   fillPlaceholders,
   loadSession,
@@ -17,6 +25,7 @@ import {
   saveTemplates,
   type Settings,
 } from "./core/storage";
+import { initPhase3, type Phase3Hooks } from "./ui/phase3";
 
 // ---------------------------------------------------------------------------
 // State
@@ -25,6 +34,7 @@ let settings: Settings = loadSettings();
 let templates = loadTemplates();
 let snippets = loadSnippets();
 let lastIocMatches: IocMatch[] = [];
+let phase3Hooks: Phase3Hooks;
 
 document.documentElement.setAttribute("data-theme", settings.darkMode ? "dark" : "light");
 
@@ -38,10 +48,12 @@ app.innerHTML = `
     <button id="btn-new">New Tab</button>
     <button id="btn-open">Open…</button>
     <button id="btn-save">Save</button>
+    <button id="btn-save-as">Save As…</button>
     <span class="divider"></span>
     <button id="btn-defang" title="Ctrl+D">Defang</button>
     <button id="btn-refang" title="Ctrl+R">Refang</button>
     <button id="btn-extract" title="Ctrl+I">Extract IOCs</button>
+    <button id="btn-safe-copy" title="Blocks copy on cross-client contamination">🔒 Safe Copy</button>
     <span class="divider"></span>
     <button id="btn-md5">MD5</button>
     <button id="btn-sha1">SHA1</button>
@@ -51,10 +63,19 @@ app.innerHTML = `
     <button id="btn-b64enc">Base64 Encode</button>
     <button id="btn-b64dec">Base64 Decode</button>
     <span class="divider"></span>
+    <select id="client-select" title="Active client"></select>
+    <button id="btn-manage-clients">Clients…</button>
+    <button id="btn-contamination-check">⚠ Check</button>
+    <span class="divider"></span>
+    <button id="btn-training-wheels">🎓 Checklist</button>
+    <button id="btn-breakglass">🚨 Mistake?</button>
+    <button id="btn-mileage">📊 Mileage</button>
+    <span class="divider"></span>
     <button id="btn-theme"></button>
     <button id="btn-settings">Settings</button>
   </div>
   <div class="tab-bar" id="tab-bar"></div>
+  <div class="tw-panel hidden" id="tw-panel"></div>
   <div class="main">
     <div class="editor-container" id="editor"></div>
     <div class="sidebar">
@@ -70,7 +91,11 @@ app.innerHTML = `
   </div>
   <div class="status-bar">
     <span id="status-left">Ready</span>
-    <span id="status-right"></span>
+    <span class="status-right-group">
+      <span id="traffic-light" class="traffic-dot" title="Content safety indicator"></span>
+      <span id="timer-display">⏱ --:--</span>
+      <span id="status-right"></span>
+    </span>
   </div>
   <input type="file" id="file-input" accept=".txt,.log,.md,.csv,.json" style="display:none" />
 `;
@@ -89,6 +114,7 @@ const tabs = new TabManager(editorContainer, settings, {
   onChange: () => {
     scheduleAutosave();
     updateStatus();
+    phase3Hooks?.onTextChanged();
   },
   onTabsUpdated: () => {
     renderTabBar();
@@ -118,6 +144,7 @@ function renderTabBar() {
     el.querySelector(".tab-close")!.addEventListener("click", (e) => {
       e.stopPropagation();
       tabs.closeTab(t.id);
+      phase3Hooks?.onTabClosed(t.id);
     });
     el.addEventListener("dblclick", () => {
       const name = prompt("Rename tab", t.title);
@@ -161,20 +188,106 @@ function escapeHtml(s: string): string {
 // ---------------------------------------------------------------------------
 document.querySelector("#btn-new")!.addEventListener("click", () => tabs.createTab("Untitled", ""));
 
-document.querySelector("#btn-open")!.addEventListener("click", () => fileInput.click());
+document.querySelector("#btn-open")!.addEventListener("click", async () => {
+  if (hasFileSystemAccess) {
+    try {
+      const opened = await pickAndOpenFile();
+      if (!opened) return; // user cancelled
+      const id = tabs.createTab(opened.name, opened.content);
+      if (opened.handle) tabs.attachFileHandle(id, opened.handle);
+      flashStatus(`Opened ${opened.name}`);
+    } catch (e) {
+      alert((e as Error).message ?? "Could not open file");
+    }
+    return;
+  }
+  fileInput.click();
+});
 fileInput.addEventListener("change", async () => {
   const file = fileInput.files?.[0];
-  if (!file) return;
-  const text = await file.text();
-  tabs.createTab(file.name, text);
   fileInput.value = "";
+  if (!file) return;
+  try {
+    const opened = await openFromInputFile(file);
+    tabs.createTab(opened.name, opened.content);
+    flashStatus(`Opened ${opened.name}`);
+  } catch (e) {
+    alert((e as Error).message ?? "Could not open file");
+  }
 });
 
-document.querySelector("#btn-save")!.addEventListener("click", () => {
-  const active = tabs.list().find((t) => t.id === tabs.activeTabId());
+async function saveActiveTab(forcePicker: boolean) {
+  const activeId = tabs.activeTabId();
+  const active = tabs.list().find((t) => t.id === activeId);
+  const content = tabs.getContent();
+  const existingHandle = activeId ? tabs.getFileHandle(activeId) : undefined;
+
+  if (!forcePicker && existingHandle) {
+    try {
+      await writeToHandle(existingHandle, content);
+      flashStatus(`Saved ${active?.title ?? ""}`);
+      return;
+    } catch (e) {
+      alert(`Could not save file: ${(e as Error).message}`);
+      return;
+    }
+  }
+
+  if (hasFileSystemAccess) {
+    try {
+      const suggested = active ? active.title : "note.txt";
+      const handle = await pickAndSaveFile(suggested, content);
+      if (!handle) return; // user cancelled
+      if (activeId) {
+        tabs.attachFileHandle(activeId, handle);
+        tabs.renameTab(activeId, handle.name);
+      }
+      flashStatus(`Saved ${handle.name}`);
+    } catch (e) {
+      alert(`Could not save file: ${(e as Error).message}`);
+    }
+    return;
+  }
+
   const filename = active ? `${active.title}.txt` : "note.txt";
-  downloadTextFile(filename, tabs.getContent());
+  downloadTextFile(filename, content);
   flashStatus("Saved to downloads");
+}
+
+document.querySelector("#btn-save")!.addEventListener("click", () => saveActiveTab(false));
+document.querySelector("#btn-save-as")!.addEventListener("click", () => saveActiveTab(true));
+
+// Drag & drop files onto the editor open them as new tabs.
+editorContainer.addEventListener("dragover", (e) => {
+  e.preventDefault();
+  if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+  editorContainer.classList.add("drag-over");
+});
+editorContainer.addEventListener("dragleave", () => editorContainer.classList.remove("drag-over"));
+editorContainer.addEventListener("drop", async (e) => {
+  e.preventDefault();
+  editorContainer.classList.remove("drag-over");
+  const items = e.dataTransfer?.items;
+  const files = e.dataTransfer?.files;
+  try {
+    if (items && items.length > 0) {
+      for (const item of Array.from(items)) {
+        if (item.kind !== "file") continue;
+        const opened = await openFromDataTransferItem(item);
+        if (!opened) continue;
+        const id = tabs.createTab(opened.name, opened.content);
+        if (opened.handle) tabs.attachFileHandle(id, opened.handle);
+      }
+    } else if (files) {
+      for (const file of Array.from(files)) {
+        const opened = await openFromInputFile(file);
+        tabs.createTab(opened.name, opened.content);
+      }
+    }
+    flashStatus("Opened dropped file(s)");
+  } catch (e) {
+    alert((e as Error).message ?? "Could not open dropped file");
+  }
 });
 
 document.querySelector("#btn-defang")!.addEventListener("click", doDefang);
@@ -184,6 +297,7 @@ document.querySelector("#btn-extract")!.addEventListener("click", doExtract);
 function doDefang() {
   tabs.setContent(defangText(tabs.getContent()));
   flashStatus("Defanged IOCs");
+  phase3Hooks?.onDefang();
 }
 function doRefang() {
   tabs.setContent(refangText(tabs.getContent()));
@@ -194,6 +308,7 @@ function doExtract() {
   renderIocPanel();
   switchSidebar("iocs");
   flashStatus(`Extracted ${lastIocMatches.length} IOC(s)`);
+  phase3Hooks?.onExtractIocs(lastIocMatches.length);
 }
 
 document.querySelector("#btn-md5")!.addEventListener("click", () => showHash("md5"));
@@ -396,6 +511,11 @@ function applySettings() {
   updateThemeButton();
 }
 
+function patchSettings(patch: Partial<Settings>) {
+  settings = { ...settings, ...patch };
+  applySettings();
+}
+
 document.querySelector("#btn-theme")!.addEventListener("click", () => {
   settings = { ...settings, darkMode: !settings.darkMode };
   applySettings();
@@ -441,12 +561,12 @@ document.querySelector("#btn-settings")!.addEventListener("click", () => {
 // ---------------------------------------------------------------------------
 // Modal helper
 // ---------------------------------------------------------------------------
-function openModal(title: string, bodyHtml: string) {
+function openModal(title: string, bodyHtml: string, opts?: { wide?: boolean }) {
   closeModal();
   const backdrop = document.createElement("div");
   backdrop.className = "modal-backdrop";
   backdrop.id = "modal-backdrop";
-  backdrop.innerHTML = `<div class="modal"><h3>${escapeHtml(title)}</h3>${bodyHtml}</div>`;
+  backdrop.innerHTML = `<div class="modal${opts?.wide ? " modal-wide" : ""}"><h3>${escapeHtml(title)}</h3>${bodyHtml}</div>`;
   backdrop.addEventListener("click", (e) => {
     if (e.target === backdrop) closeModal();
   });
@@ -491,6 +611,19 @@ document.addEventListener("keydown", (e) => {
       break;
     }
   }
+});
+
+// ---------------------------------------------------------------------------
+// Phase 3: client contamination checks, training wheels, breakglass, mileage
+// ---------------------------------------------------------------------------
+phase3Hooks = initPhase3({
+  tabs,
+  flashStatus,
+  openModal,
+  closeModal,
+  escapeHtml,
+  getSettings: () => settings,
+  patchSettings,
 });
 
 updateStatus();
