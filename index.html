@@ -1,173 +1,116 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>KQL Hunt Range</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Manrope:wght@500;700;800&display=swap">
-<link rel="stylesheet" href="css/style.css">
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>spackyjacky.github.io/vmtesttyhreat</title>
+<style>
+  :root {
+    --bg: #050a14;
+    --bg-alt: #0a1120;
+    --fg: #cfe3ff;
+    --fg-muted: #5f7fa6;
+    --border: #16273f;
+    --accent: #22d3ee;
+    --accent-fg: #04141c;
+    --glow: rgba(34, 211, 238, 0.35);
+    --mono: "JetBrains Mono", "Fira Code", "Cascadia Code", Consolas, "SF Mono", ui-monospace, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    height: 100%;
+    font-family: var(--mono);
+    background: var(--bg);
+    color: var(--fg);
+    background-image:
+      linear-gradient(rgba(34, 211, 238, 0.05) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(34, 211, 238, 0.05) 1px, transparent 1px);
+    background-size: 34px 34px;
+  }
+  body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100%;
+    padding: 24px;
+  }
+  h1 {
+    font-size: 20px;
+    letter-spacing: 0.5px;
+    color: var(--accent);
+    text-shadow: 0 0 10px var(--glow), 0 0 22px rgba(34, 211, 238, 0.18);
+    margin: 0 0 6px;
+  }
+  p.tagline {
+    color: var(--fg-muted);
+    font-size: 13px;
+    margin: 0 0 36px;
+    text-align: center;
+  }
+  .cards {
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+    justify-content: center;
+    max-width: 720px;
+  }
+  a.card {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 300px;
+    padding: 26px 24px;
+    text-decoration: none;
+    color: var(--fg);
+    background: var(--bg-alt);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: 0 0 0 1px transparent;
+    transition: transform 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease;
+  }
+  a.card:hover {
+    transform: translateY(-3px);
+    border-color: var(--accent);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4), 0 0 22px var(--glow);
+  }
+  .card .icon { font-size: 28px; }
+  .card h2 {
+    margin: 0;
+    font-size: 16px;
+    color: var(--accent);
+  }
+  .card p {
+    margin: 0;
+    font-size: 12.5px;
+    color: var(--fg-muted);
+    line-height: 1.5;
+  }
+  footer {
+    margin-top: 40px;
+    font-size: 11px;
+    color: var(--fg-muted);
+  }
+</style>
 </head>
 <body>
-<div class="app" id="app">
-  <div class="topbar">
-    <button class="menubtn" id="btnMenu" title="Toggle sidebar" aria-label="Toggle sidebar">☰</button>
-    <div class="brand"><span class="dot"></span>KQL Hunt Range</div>
-    <div class="sub full">a simulated log-analytics workspace, grounded in Microsoft Learn's KQL reference</div>
-    <div class="topbar-spacer"></div>
-    <button class="iconbtn" id="btnTheme" title="Toggle light/dark"><span class="full-label">Theme</span><span class="short-label" hidden>◐</span></button>
-    <button class="iconbtn" id="btnCheat"><span class="full-label">Cheat sheet</span><span class="short-label" hidden>?</span></button>
-    <button class="iconbtn" id="btnCoverage"><span class="full-label">🎯 Coverage</span><span class="short-label" hidden>🎯</span></button>
-    <button class="iconbtn" id="btnLearningMatrix"><span class="full-label">📊 Learning Matrix</span><span class="short-label" hidden>📊</span></button>
-    <button class="iconbtn" id="btnLearningPaths"><span class="full-label">🛤 Learning Paths</span><span class="short-label" hidden>🛤</span></button>
-    <button class="iconbtn" id="btnDetectionLab"><span class="full-label">🔬 Detection Lab</span><span class="short-label" hidden>🔬</span></button>
-    <button class="iconbtn" id="btnBadges"><span class="full-label">🏅 Badges</span><span class="short-label" hidden>🏅</span></button>
-    <button class="iconbtn" id="btnGenerate" hidden><span class="full-label">✦ New scenario (Claude)</span><span class="short-label" hidden>✦</span></button>
+  <h1>spackyjacky / vmtesttyhreat</h1>
+  <p class="tagline">Pick a tool.</p>
+  <div class="cards">
+    <a class="card" href="./threatpad/">
+      <span class="icon">🛡</span>
+      <h2>ThreatPad</h2>
+      <p>Browser-based SOC incident notes: IOC detection, defang/refang, hashing,
+      client contamination checks, and incident checklists. Local-only, no backend.</p>
+    </a>
+    <a class="card" href="./kql-hunt-range/">
+      <span class="icon">📡</span>
+      <h2>KQL Hunt Range</h2>
+      <p>A browser-based KQL practice range for writing and testing threat-hunting
+      queries against sample datasets.</p>
+    </a>
   </div>
-
-  <div class="layout">
-    <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
-    <div class="sidebar" id="sidebar">
-      <div class="sidebar-tabs">
-        <div class="sidebar-tab active" data-tab="scenarios">Scenarios</div>
-        <div class="sidebar-tab" data-tab="schema">Schema</div>
-        <div class="sidebar-tab" data-tab="shift">🚨 Shift Queue</div>
-      </div>
-      <div class="sidebar-pane" id="paneScenarios"></div>
-      <div class="sidebar-pane" id="paneSchema" hidden></div>
-      <div class="sidebar-pane" id="paneShift" hidden></div>
-    </div>
-
-    <div class="main">
-      <div class="mission" id="mission" hidden>
-        <div class="mission-top">
-          <span class="scn-badge" id="missionLevel"></span>
-          <span class="mission-title" id="missionTitle"></span>
-          <span class="mitre-badge" id="missionMitre" hidden></span>
-        </div>
-        <div class="mission-steps" id="missionSteps" hidden></div>
-        <div class="mission-prompt" id="missionPrompt"></div>
-        <div class="mission-actions">
-          <button class="linkbtn" id="btnHint">Ask a teammate</button>
-          <button class="linkbtn" id="btnSolution">Reveal solution</button>
-          <button class="linkbtn" id="btnCheckAnswer">Check my query against this mission</button>
-          <button class="linkbtn" id="btnCloseMission">Close mission</button>
-        </div>
-        <div id="hintBox"></div>
-      </div>
-
-      <div class="editor-toolbar">
-        <button class="iconbtn primary" id="btnRun">▶ Run (Shift+Enter)</button>
-        <button class="iconbtn" id="btnClear">Clear</button>
-        <button class="iconbtn" id="btnSuggest" title="Show suggestions for what's under the cursor">💡 Suggest</button>
-        <button class="iconbtn warroom-toggle" id="btnWarRoom" title="Open war room notes">🗂 War room</button>
-        <span style="flex:1"></span>
-        <span class="sub" id="tableHint" style="color:var(--text-faint);font-size:12px"></span>
-      </div>
-      <div class="editor-wrap"><textarea id="editor"></textarea></div>
-
-      <div class="resultsbar">
-        <span id="resultsSummary">Run a query to see results.</span>
-      </div>
-      <div id="queryNotes"></div>
-      <div class="results-area" id="resultsArea">
-        <div class="results-empty">Pick a scenario from the left, or just start typing a query below.<br>Try: <code>DeviceProcessEvents | take 10</code></div>
-      </div>
-    </div>
-
-    <div class="warroom-backdrop" id="warroomBackdrop"></div>
-    <div class="warroom" id="warroom">
-      <div class="warroom-head">
-        <b>🗂 War room</b>
-        <button class="iconbtn" id="btnCloseWarRoom" title="Close">Close</button>
-      </div>
-      <div class="warroom-body">
-        <label class="warroom-label" for="warroomSelect">Incident notes for</label>
-        <select id="warroomSelect"></select>
-        <textarea id="warroomText" placeholder="Log what you're seeing — IOCs, affected accounts and devices, timeline, next steps. These notes are saved on this device only."></textarea>
-        <div class="warroom-actions">
-          <button class="iconbtn primary" id="btnSaveWarRoom">Save notes</button>
-          <span class="warroom-saved" id="warroomSaved"></span>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<div class="peer-toast-wrap" id="peerToastWrap"></div>
-
-<div class="modal-backdrop" id="cheatModal" hidden>
-  <div class="modal">
-    <h3>KQL quick reference (this practice range's supported subset)</h3>
-    <div class="cheatsheet" id="cheatContent"></div>
-    <div class="modal-actions"><button class="iconbtn" id="btnCloseCheat">Close</button></div>
-  </div>
-</div>
-
-<div class="modal-backdrop" id="coverageModal" hidden>
-  <div class="modal">
-    <h3>ATT&amp;CK coverage — MITRE ATT&amp;CK Enterprise v19</h3>
-    <p>Each completed mission's technique lights up the tactic(s) it belongs to. Green = you've closed a mission covering that tactic; amber = a mission touches it but isn't done yet; gray = nothing in this range currently covers it.</p>
-    <div id="coverageContent"></div>
-    <div class="modal-actions"><button class="iconbtn" id="btnCloseCoverage">Close</button></div>
-  </div>
-</div>
-
-<div class="modal-backdrop" id="learningMatrixModal" hidden>
-  <div class="modal" style="max-width:760px">
-    <h3>📊 Learning Matrix</h3>
-    <p>What each mission teaches, grouped by cyber-analyst domain: the career-track discipline it exercises, the KQL language features (<code>teaches</code>), and the practical cyber-analyst skill it builds. Use the sidebar filter to show only missions for a domain or discipline you want to focus on.</p>
-    <div id="learningMatrixContent"></div>
-    <div class="modal-actions"><button class="iconbtn" id="btnCloseLearningMatrix">Close</button></div>
-  </div>
-</div>
-
-<div class="modal-backdrop" id="learningPathsModal" hidden>
-  <div class="modal" style="max-width:760px">
-    <h3>🛤 Learning Paths</h3>
-    <p>Curated mission sequences built on top of this range's own domain/discipline tags — five guided tracks through the same missions in the sidebar, in a deliberate order, each ending in a badge. Click any mission below to jump straight to it.</p>
-    <div id="learningPathsContent"></div>
-    <div class="modal-actions"><button class="iconbtn" id="btnCloseLearningPaths">Close</button></div>
-  </div>
-</div>
-
-<div class="modal-backdrop" id="detectionModal" hidden>
-  <div class="modal">
-    <h3>🔬 Detection Lab</h3>
-    <p>Write a query meant to run continuously — a detection, not a one-off hunt — then test it against the full noisy dataset (real incident activity, plus everything benign around it) and see its precision and recall.</p>
-    <div id="detectionContent"></div>
-    <div class="modal-actions"><button class="iconbtn" id="btnCloseDetectionLab">Close</button></div>
-  </div>
-</div>
-
-<div class="modal-backdrop" id="badgesModal" hidden>
-  <div class="modal">
-    <h3>🏅 Achievements</h3>
-    <p>Fun side-goals, not graded — earned by playing the range like a real analyst would.</p>
-    <div id="badgesContent"></div>
-    <div class="modal-actions"><button class="iconbtn" id="btnCloseBadges">Close</button></div>
-  </div>
-</div>
-
-<div class="modal-backdrop" id="genModal" hidden>
-  <div class="modal">
-    <h3>Generate a new scenario</h3>
-    <p>Claude will write a fresh investigative question against this same dataset, then this page runs Claude's own solution query through the local engine to build a verified answer key — same as every built-in scenario.</p>
-    <textarea id="genTopic" placeholder="Optional: steer it — e.g. &quot;something about EmailEvents&quot; or &quot;a join-based question&quot;"></textarea>
-    <div class="modal-actions">
-      <button class="iconbtn" id="btnGenCancel">Cancel</button>
-      <button class="iconbtn primary" id="btnGenGo">Generate</button>
-    </div>
-    <div id="genStatus" style="font-size:12.5px;color:var(--text-dim);margin-top:8px"></div>
-  </div>
-</div>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/mode/simple.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/show-hint.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/edit/matchbrackets.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/selection/active-line.min.js"></script>
-<script src="src/kql-engine.js"></script>
-<script src="src/dataset.js"></script>
-<script src="src/scenarios.js"></script>
-<script src="src/app.js"></script>
+  <footer>Static sites, hosted on GitHub Pages.</footer>
 </body>
 </html>
