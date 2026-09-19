@@ -438,6 +438,7 @@ export function initPhase3(ctx: Phase3Context): Phase3Hooks {
       }
     }
     trafficLight.style.background = color;
+    trafficLight.style.boxShadow = color === "#555555" ? "none" : `0 0 8px ${color}`;
   }
 
   function updateTimer() {
