@@ -61,7 +61,6 @@ app.innerHTML = `
         <button class="menu-trigger">IOC Tools ▾</button>
         <div class="menu-list">
           <button id="btn-extract" title="Ctrl+I">Extract IOCs</button>
-          <button id="btn-safe-copy" title="Blocks copy on cross-client contamination">🔒 Safe Copy</button>
         </div>
       </div>
 
@@ -136,6 +135,7 @@ app.innerHTML = `
       <span id="status-right"></span>
     </span>
   </div>
+  <button id="btn-safe-copy" class="fab" title="Blocks copy on cross-client contamination">🔒 Safe Copy</button>
   <input type="file" id="file-input" accept=".txt,.log,.md,.csv,.json" style="display:none" />
 `;
 

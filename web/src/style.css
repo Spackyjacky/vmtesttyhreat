@@ -370,6 +370,35 @@ html, body {
   display: inline-block;
 }
 
+/* Safe Copy — floating action button, bottom-right of the viewport */
+.fab {
+  position: fixed;
+  right: 22px;
+  bottom: 44px;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 20px;
+  font-size: 14px;
+  font-weight: 700;
+  font-family: var(--mono);
+  color: var(--accent-fg);
+  background: var(--accent);
+  border: 2px solid var(--accent);
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35), 0 0 18px var(--glow);
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+.fab:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.4), 0 0 26px var(--glow);
+  filter: brightness(1.08);
+}
+.fab:active { transform: translateY(0); }
+
 .toolbar select {
   background: var(--bg);
   color: var(--fg);
