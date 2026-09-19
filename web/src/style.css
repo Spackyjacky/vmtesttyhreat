@@ -42,13 +42,28 @@ html, body {
 
 /* Toolbar */
 .toolbar {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px;
+  background: var(--bg-alt);
+  border-bottom: 1px solid var(--border);
+}
+
+.toolbar-left, .toolbar-right {
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 6px 8px;
-  background: var(--bg-alt);
-  border-bottom: 1px solid var(--border);
   flex-wrap: wrap;
+  min-width: 0;
+}
+.toolbar-right { justify-content: flex-end; }
+.toolbar-center {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  justify-self: center;
 }
 
 .toolbar .divider {
@@ -74,9 +89,82 @@ html, body {
 
 .app-title {
   font-weight: 700;
-  margin-right: 10px;
+  margin-right: 6px;
   letter-spacing: 0.3px;
 }
+
+/* Dropdown menus */
+.menu { position: relative; }
+.menu-trigger {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--fg);
+  padding: 5px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.menu-trigger:hover, .menu.open .menu-trigger {
+  background: var(--border);
+}
+.menu-list {
+  display: none;
+  flex-direction: column;
+  gap: 2px;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 4px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px;
+  min-width: 190px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
+  z-index: 40;
+}
+.menu.menu-align-right .menu-list {
+  left: auto;
+  right: 0;
+}
+.menu.open .menu-list { display: flex; }
+.menu-list button {
+  text-align: left;
+  width: 100%;
+  background: transparent;
+  border: none;
+  color: var(--fg);
+  padding: 7px 10px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.menu-list button:hover { background: var(--border); }
+
+/* Defang / Refang — centre stage */
+.center-action {
+  font-size: 14px;
+  font-weight: 700;
+  padding: 8px 24px;
+  border-radius: 8px;
+  cursor: pointer;
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+}
+.center-action-solid {
+  background: var(--accent);
+  color: var(--accent-fg);
+  border: 2px solid var(--accent);
+}
+.center-action-solid:hover { filter: brightness(1.1); }
+.center-action-outline {
+  background: transparent;
+  color: var(--accent);
+  border: 2px solid var(--accent);
+}
+.center-action-outline:hover { background: var(--accent); color: var(--accent-fg); }
 
 /* Tab bar */
 .tab-bar {

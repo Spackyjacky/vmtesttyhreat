@@ -44,35 +44,74 @@ document.documentElement.setAttribute("data-theme", settings.darkMode ? "dark" :
 const app = document.querySelector<HTMLDivElement>("#app")!;
 app.innerHTML = `
   <div class="toolbar">
-    <span class="app-title">ThreatPad</span>
-    <button id="btn-new">New Tab</button>
-    <button id="btn-open">Open…</button>
-    <button id="btn-save">Save</button>
-    <button id="btn-save-as">Save As…</button>
-    <span class="divider"></span>
-    <button id="btn-defang" title="Ctrl+D">Defang</button>
-    <button id="btn-refang" title="Ctrl+R">Refang</button>
-    <button id="btn-extract" title="Ctrl+I">Extract IOCs</button>
-    <button id="btn-safe-copy" title="Blocks copy on cross-client contamination">🔒 Safe Copy</button>
-    <span class="divider"></span>
-    <button id="btn-md5">MD5</button>
-    <button id="btn-sha1">SHA1</button>
-    <button id="btn-sha256">SHA256</button>
-    <button id="btn-identify">Identify Hash</button>
-    <span class="divider"></span>
-    <button id="btn-b64enc">Base64 Encode</button>
-    <button id="btn-b64dec">Base64 Decode</button>
-    <span class="divider"></span>
-    <select id="client-select" title="Active client"></select>
-    <button id="btn-manage-clients">Clients…</button>
-    <button id="btn-contamination-check">⚠ Check</button>
-    <span class="divider"></span>
-    <button id="btn-training-wheels">🎓 Checklist</button>
-    <button id="btn-breakglass">🚨 Mistake?</button>
-    <button id="btn-mileage">📊 Mileage</button>
-    <span class="divider"></span>
-    <button id="btn-theme"></button>
-    <button id="btn-settings">Settings</button>
+    <div class="toolbar-left">
+      <span class="app-title">ThreatPad</span>
+
+      <div class="menu">
+        <button class="menu-trigger">File ▾</button>
+        <div class="menu-list">
+          <button id="btn-new">New Tab</button>
+          <button id="btn-open">Open…</button>
+          <button id="btn-save">Save</button>
+          <button id="btn-save-as">Save As…</button>
+        </div>
+      </div>
+
+      <div class="menu">
+        <button class="menu-trigger">IOC Tools ▾</button>
+        <div class="menu-list">
+          <button id="btn-extract" title="Ctrl+I">Extract IOCs</button>
+          <button id="btn-safe-copy" title="Blocks copy on cross-client contamination">🔒 Safe Copy</button>
+        </div>
+      </div>
+
+      <div class="menu">
+        <button class="menu-trigger">Hash ▾</button>
+        <div class="menu-list">
+          <button id="btn-md5">MD5</button>
+          <button id="btn-sha1">SHA1</button>
+          <button id="btn-sha256">SHA256</button>
+          <button id="btn-identify">Identify Hash</button>
+        </div>
+      </div>
+
+      <div class="menu">
+        <button class="menu-trigger">Encode ▾</button>
+        <div class="menu-list">
+          <button id="btn-b64enc">Base64 Encode</button>
+          <button id="btn-b64dec">Base64 Decode</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="toolbar-center">
+      <button id="btn-defang" class="center-action center-action-solid" title="Ctrl+D">🛡 Defang</button>
+      <button id="btn-refang" class="center-action center-action-outline" title="Ctrl+R">♻ Refang</button>
+    </div>
+
+    <div class="toolbar-right">
+      <select id="client-select" title="Active client"></select>
+
+      <div class="menu menu-align-right">
+        <button class="menu-trigger">Client ▾</button>
+        <div class="menu-list">
+          <button id="btn-manage-clients">Manage Clients…</button>
+          <button id="btn-contamination-check">⚠ Contamination Check</button>
+        </div>
+      </div>
+
+      <div class="menu menu-align-right">
+        <button class="menu-trigger">SOC ▾</button>
+        <div class="menu-list">
+          <button id="btn-training-wheels">🎓 Checklist</button>
+          <button id="btn-breakglass">🚨 Mistake?</button>
+          <button id="btn-mileage">📊 Mileage</button>
+        </div>
+      </div>
+
+      <button id="btn-theme"></button>
+      <button id="btn-settings" title="Settings">⚙</button>
+    </div>
   </div>
   <div class="tab-bar" id="tab-bar"></div>
   <div class="tw-panel hidden" id="tw-panel"></div>
@@ -106,6 +145,26 @@ const statusLeft = document.querySelector<HTMLSpanElement>("#status-left")!;
 const statusRight = document.querySelector<HTMLSpanElement>("#status-right")!;
 const themeBtn = document.querySelector<HTMLButtonElement>("#btn-theme")!;
 const fileInput = document.querySelector<HTMLInputElement>("#file-input")!;
+
+// ---------------------------------------------------------------------------
+// Toolbar dropdown menus
+// ---------------------------------------------------------------------------
+function closeAllMenus() {
+  document.querySelectorAll(".menu.open").forEach((m) => m.classList.remove("open"));
+}
+document.querySelectorAll<HTMLDivElement>(".toolbar .menu").forEach((menu) => {
+  const trigger = menu.querySelector<HTMLButtonElement>(".menu-trigger")!;
+  trigger.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const wasOpen = menu.classList.contains("open");
+    closeAllMenus();
+    if (!wasOpen) menu.classList.add("open");
+  });
+});
+document.addEventListener("click", closeAllMenus);
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") closeAllMenus();
+});
 
 // ---------------------------------------------------------------------------
 // Editor / tabs
