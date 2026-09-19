@@ -136,6 +136,7 @@ app.innerHTML = `
     </span>
   </div>
   <button id="btn-safe-copy" class="fab" title="Blocks copy on cross-client contamination">🔒 Safe Copy</button>
+  <button id="btn-help" class="fab fab-help" title="Help / quick reference">?</button>
   <input type="file" id="file-input" accept=".txt,.log,.md,.csv,.json" style="display:none" />
 `;
 
@@ -205,9 +206,9 @@ function renderTabBar() {
       tabs.closeTab(t.id);
       phase3Hooks?.onTabClosed(t.id);
     });
-    el.addEventListener("dblclick", () => {
-      const name = prompt("Rename tab", t.title);
-      if (name) tabs.renameTab(t.id, name);
+    el.addEventListener("dblclick", (e) => {
+      if ((e.target as HTMLElement).classList.contains("tab-close")) return;
+      startRenameTab(el, t.id, t.title);
     });
     tabBar.appendChild(el);
   }
@@ -217,6 +218,38 @@ function renderTabBar() {
   newBtn.title = "New tab (Ctrl+N)";
   newBtn.addEventListener("click", () => tabs.createTab("Untitled", ""));
   tabBar.appendChild(newBtn);
+}
+
+function startRenameTab(tabEl: HTMLDivElement, id: string, currentTitle: string) {
+  const titleSpan = tabEl.querySelector<HTMLSpanElement>(".tab-title");
+  if (!titleSpan) return;
+
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "tab-rename-input";
+  input.value = currentTitle;
+  titleSpan.replaceWith(input);
+  input.focus();
+  input.select();
+
+  let settled = false;
+  const commit = () => {
+    if (settled) return;
+    settled = true;
+    const value = input.value.trim();
+    tabs.renameTab(id, value || currentTitle);
+  };
+  input.addEventListener("click", (e) => e.stopPropagation());
+  input.addEventListener("keydown", (e) => {
+    e.stopPropagation();
+    if (e.key === "Enter") input.blur();
+    else if (e.key === "Escape") {
+      settled = true;
+      input.blur();
+      renderTabBar();
+    }
+  });
+  input.addEventListener("blur", commit, { once: true });
 }
 
 let autosaveHandle: number | undefined;
@@ -615,6 +648,61 @@ document.querySelector("#btn-settings")!.addEventListener("click", () => {
     closeModal();
   });
   document.querySelector("#s-close")!.addEventListener("click", closeModal);
+});
+
+document.querySelector("#btn-help")!.addEventListener("click", () => {
+  openModal(
+    "ThreatPad — Quick Reference",
+    `
+    <div class="help-content">
+      <p>A CyberChef-style SOC notes app. Everything runs in your browser and is
+      saved to this device's local storage only — no accounts, no backend, no
+      network calls, nothing leaves your machine.</p>
+
+      <h4>Menus</h4>
+      <ul>
+        <li><b>File</b> — New Tab, Open, Save, Save As (uses your OS file picker where supported)</li>
+        <li><b>IOC Tools</b> — Extract IOCs into the sidebar (CSV/JSON/TXT export, click-to-copy)</li>
+        <li><b>Hash</b> — MD5 / SHA1 / SHA256 generation, and hash-type identification</li>
+        <li><b>Encode</b> — Base64 encode/decode</li>
+        <li><b>Client ▾</b> — manage per-client identifiers and pick the active client</li>
+        <li><b>SOC ▾</b> — incident Checklist, Breakglass ("I Think I've Made a Mistake"), and Mileage stats</li>
+      </ul>
+
+      <h4>Center stage</h4>
+      <ul>
+        <li><b>Defang / Refang</b> — safely neutralize or restore IOCs (<code>hxxp[://]</code>, <code>[.]</code>, <code>[@]</code>, <code>[:]</code>)</li>
+      </ul>
+
+      <h4>Floating buttons</h4>
+      <ul>
+        <li><b>🔒 Safe Copy</b> (bottom-right) — blocks the clipboard copy if the active tab contains
+        another client's identifiers, and warns before copying undefanged live IOCs</li>
+        <li><b>?</b> (bottom-left) — this panel</li>
+      </ul>
+
+      <h4>Keyboard shortcuts</h4>
+      <ul>
+        <li><code>Ctrl/Cmd+D</code> — Defang</li>
+        <li><code>Ctrl/Cmd+R</code> — Refang</li>
+        <li><code>Ctrl/Cmd+I</code> — Extract IOCs</li>
+        <li><code>Ctrl/Cmd+N</code> — New tab</li>
+        <li><code>Ctrl/Cmd+W</code> — Close tab</li>
+        <li><code>Ctrl/Cmd+S</code> — Save</li>
+        <li><b>Double-click a tab name</b> to rename it (Enter to confirm, Esc to cancel)</li>
+      </ul>
+
+      <p class="help-footnote">The traffic-light dot and timer in the status bar reflect the active
+      tab: grey = empty, green = clean, amber = undefanged IOCs present, red = cross-client
+      contamination detected.</p>
+    </div>
+    <div class="modal-actions">
+      <button class="primary" id="help-close">Close</button>
+    </div>
+  `,
+    { wide: true },
+  );
+  document.querySelector("#help-close")!.addEventListener("click", closeModal);
 });
 
 // ---------------------------------------------------------------------------
